@@ -4,7 +4,7 @@
  */
 
 package controller;
-
+import dal.UserDAO;
 import dal.RequestDAO;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -19,7 +19,7 @@ import model.User;
 @WebServlet(name="RequestListMyServlet1", urlPatterns={"/requestlistmyservlet1"})
 public class RequestListMyServlet1 extends HttpServlet {
    private final RequestDAO dao = new RequestDAO();
-
+private final UserDAO userDAO = new UserDAO();
     /** 
      * Processes requests for both HTTP <code>GET</code> and <code>POST</code> methods.
      * @param request servlet request
@@ -57,14 +57,22 @@ public class RequestListMyServlet1 extends HttpServlet {
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp)
     throws ServletException, IOException {
-          User u = (User) req.getSession().getAttribute("user");
-        if (u==null){ resp.sendRedirect(req.getContextPath()+"/loginservlet1"); return; }
-        try {
-            req.setAttribute("items", dao.listMine(u.getId()));
-            req.getRequestDispatcher("/WEB-INF/views/request_list.jsp").forward(req, resp);
-        } catch (Exception e) {
-            throw new ServletException(e);
-        }
+         User me = (User) req.getSession().getAttribute("user");
+    if (me == null) { resp.sendRedirect(req.getContextPath()+"/loginservlet1"); return; }
+
+    try {
+        java.util.List<model.Request> items = new dal.RequestDAO().listMine(me.getId());
+        // gom các id cần tên
+        java.util.Set<Integer> ids = new java.util.HashSet<>();
+        ids.add(me.getId()); // createdBy (chính mình)
+        for (model.Request r : items) if (r.getProcessedBy()!=null) ids.add(r.getProcessedBy());
+        java.util.Map<Integer,String> names = userDAO.getFullNamesByIds(ids);
+
+        req.setAttribute("items", items);
+        req.setAttribute("names", names);
+    } catch (Exception e) { throw new ServletException(e); }
+
+    req.getRequestDispatcher("/WEB-INF/views/request_list.jsp").forward(req, resp);
     } 
 
     /** 

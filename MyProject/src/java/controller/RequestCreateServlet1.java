@@ -7,6 +7,7 @@ package controller;
 
 import dal.HistoryDAO;
 import dal.RequestDAO;
+import dal.UserDAO;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.*;
@@ -23,8 +24,8 @@ import model.User;
  */
 @WebServlet(name="RequestCreateServlet1", urlPatterns={"/requestcreateservlet1"})
 public class RequestCreateServlet1 extends HttpServlet {
-   private final RequestDAO requestDAO = new RequestDAO();
-    private final HistoryDAO historyDAO = new HistoryDAO();
+ private final RequestDAO requestDAO = new RequestDAO();
+    private final UserDAO userDAO = new UserDAO();
     /** 
      * Processes requests for both HTTP <code>GET</code> and <code>POST</code> methods.
      * @param request servlet request
@@ -62,12 +63,23 @@ public class RequestCreateServlet1 extends HttpServlet {
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp)
     throws ServletException, IOException {
-        if (req.getSession().getAttribute("user")==null) {
-            resp.sendRedirect(req.getContextPath()+"/loginservlet1");
-            return;
+         User u = (User) req.getSession().getAttribute("user");
+        if (u == null) { resp.sendRedirect(req.getContextPath() + "/loginservlet1"); return; }
+
+        try {
+            // Lấy tên role đầu tiên từ Set<Role>
+            String roleName = "—";
+            if (u.getRoles() != null && !u.getRoles().isEmpty()) {
+                roleName = u.getRoles().iterator().next().getName();  // dùng iterator vì Set không có get(0)
+            }
+            String depName = userDAO.getDepartmentName(u.getDepartmentId());
+
+            req.setAttribute("roleName", roleName);
+            req.setAttribute("depName",  depName);
+        } catch (Exception e) {
+            throw new ServletException(e);
         }
         req.getRequestDispatcher("/WEB-INF/views/request_create.jsp").forward(req, resp);
-
     } 
 
     /** 
@@ -82,35 +94,36 @@ public class RequestCreateServlet1 extends HttpServlet {
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp)
     throws ServletException, IOException {
-        User u = (User) req.getSession().getAttribute("user");
-        if (u==null){ resp.sendRedirect(req.getContextPath()+"/loginservlet1"); return; }
+         User u = (User) req.getSession().getAttribute("user");
+        if (u == null) { resp.sendRedirect(req.getContextPath() + "/loginservlet1"); return; }
 
-        String title = req.getParameter("title");
+        String sFrom  = req.getParameter("from");
+        String sTo    = req.getParameter("to");
         String reason = req.getParameter("reason");
-        LocalDate from = LocalDate.parse(req.getParameter("from"));
-        LocalDate to   = LocalDate.parse(req.getParameter("to"));
 
         try {
-            if (title==null||title.isBlank()) throw new IllegalArgumentException("Thiếu tiêu đề");
-            if (reason==null||reason.isBlank()) throw new IllegalArgumentException("Thiếu lý do");
-            if (from==null||to==null||from.isAfter(to)) throw new IllegalArgumentException("Khoảng ngày không hợp lệ");
-            if (requestDAO.existsApprovedOverlap(u.getId(), from, to))
-                throw new IllegalArgumentException("Trùng với kỳ nghỉ đã được duyệt trước đó");
+            LocalDate from = LocalDate.parse(sFrom);
+            LocalDate to   = LocalDate.parse(sTo);
+            if (from.isAfter(to)) throw new IllegalArgumentException("Khoảng ngày không hợp lệ");
+
+            // Không cho trùng với kỳ đã APPROVED
+            if (requestDAO.existsApprovedOverlap(u.getId(), from, to)) {
+                throw new IllegalStateException("Trùng với kỳ nghỉ đã được duyệt trước đó");
+            }
 
             Request r = new Request();
-            r.setTitle(title.trim());
-            r.setReason(reason.trim());
+            r.setTitle("Nghỉ phép " + from + " → " + to);
             r.setFrom(from);
             r.setTo(to);
+            r.setReason(reason);
             r.setCreatedBy(u.getId());
             r.setStatus(RequestStatus.IN_PROGRESS);
 
-            int id = requestDAO.insert(r);
-            historyDAO.add(id, u.getId(), null, RequestStatus.IN_PROGRESS.name(), "Create");
-            resp.sendRedirect(req.getContextPath()+"/requestlistmyservlet1");
-        } catch (Exception ex) {
-            req.setAttribute("error", ex.getMessage());
-            req.getRequestDispatcher("/WEB-INF/views/request_create.jsp").forward(req, resp);
+            requestDAO.insert(r);
+            resp.sendRedirect(req.getContextPath() + "/requestlistmyservlet1");
+        } catch (Exception e) {
+            req.setAttribute("error", e.getMessage());
+            doGet(req, resp); // quay lại form, vẫn có thông tin User/Role/Dep
         }
     }
 
@@ -118,9 +131,9 @@ public class RequestCreateServlet1 extends HttpServlet {
      * Returns a short description of the servlet.
      * @return a String containing servlet description
      */
-    @Override
-    public String getServletInfo() {
-        return "Short description";
-    }// </editor-fold>
-
+    
+ @Override
+    public String getServletInfo() {         // CHỈ MỘT phương thức này thôi
+        return "Create leave request";
+    }
 }

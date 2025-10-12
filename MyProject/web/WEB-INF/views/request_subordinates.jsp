@@ -3,42 +3,117 @@
     Created on : Oct 12, 2025, 3:45:07 PM
     Author     : Admin
 --%>
-
 <%@ page contentType="text/html; charset=UTF-8" %>
-<%@ page import="java.util.*, model.Request" %>
+<%@ page import="java.util.*, java.time.*, model.Request, model.User, model.Role, model.Feature" %>
 <!DOCTYPE html>
-<html><head><meta charset="UTF-8"><title>Đơn cấp dưới</title></head>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Đơn của cấp dưới</title>
+  <style>
+    body { font-family: Arial, sans-serif; }
+    h2 { margin-bottom: 8px; }
+    .nav a { margin-right: 14px; }
+    table { border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #aaa; padding: 6px 10px; }
+    .actions form { display:inline-block; margin-right:6px; }
+    .status-approved { color: #2a7a2a; font-weight: bold; }
+    .status-rejected { color: #b22; font-weight: bold; }
+    .status-inprogress { color: #aa7a00; font-weight: bold; }
+    .note-input { width: 180px; }
+    a { color:#1a66cc; text-decoration: underline; }
+  </style>
+</head>
 <body>
   <h2>Đơn của cấp dưới</h2>
-  <a href="${pageContext.request.contextPath}/requestlistmyservlet1">← Về danh sách của tôi</a>
-  <table border="1" cellpadding="6">
-    <tr><th>ID</th><th>Title</th><th>From</th><th>To</th><th>Status</th><th>Thao tác</th></tr>
-    <%
-      List<Request> items = (List<Request>) request.getAttribute("items");
-      if (items != null)
-      for (Request r : items) {
-    %>
-    <tr>
-      <td><%= r.getId() %></td>
-      <td><%= r.getTitle() %></td>
-      <td><%= r.getFrom() %></td>
-      <td><%= r.getTo() %></td>
-      <td><%= r.getStatus() %></td>
-      <td>
-       <form method="post" action="${pageContext.request.contextPath}/requestapproveservlet1" style="display:inline">
-  <input type="hidden" name="id" value="<%= r.getId() %>"/>
-  <input name="note" placeholder="Ghi chú"/>
-  <button type="submit">Approve</button>
-</form>
 
-       <form method="post" action="${pageContext.request.contextPath}/requestrejectservlet1" style="display:inline">
-  <input type="hidden" name="id" value="<%= r.getId() %>"/>
-  <input name="note" placeholder="Ghi chú"/>
-  <button type="submit">Reject</button>
-</form>
-      </td>
+  <div class="nav">
+    <a href="${pageContext.request.contextPath}/requestlistmyservlet1">← Đơn của tôi</a>
+    <%
+      User me = (User) session.getAttribute("user");
+      boolean showAgenda = false;
+      if (me != null && me.getRoles() != null) {
+        for (Role r : me.getRoles()) {
+          if (r.getFeatures() == null) continue;
+          for (Feature f : r.getFeatures()) {
+            if ("AGD".equalsIgnoreCase(f.getCode())) { showAgenda = true; break; }
+          }
+          if (showAgenda) break;
+        }
+      }
+    %>
+    <% if (showAgenda) { %>
+      <a href="${pageContext.request.contextPath}/agendaservlet1">Agenda</a>
+    <% } %>
+    <a href="${pageContext.request.contextPath}/logoutservlet1">Đăng xuất</a>
+  </div>
+
+  <%
+    List<Request> items = (List<Request>) request.getAttribute("items");
+    Map<Integer,String> names = (Map<Integer,String>) request.getAttribute("names"); // id -> fullName
+    if (items == null) items = Collections.emptyList();
+    if (names == null) names = Collections.emptyMap();
+  %>
+
+  <table>
+    <tr>
+      <th>Title</th>
+      <th>From</th>
+      <th>To</th>
+      <th>Created By</th>
+      <th>Status</th>
+      <th>Processed By</th>
+      <th>Note</th>
+      <th>Thao tác</th>
     </tr>
+
+    <% if (items.isEmpty()) { %>
+      <tr><td colspan="8" style="text-align:center">Chưa có đơn nào</td></tr>
+    <% } %>
+
+    <% for (Request r : items) {
+         String createdName   = names.getOrDefault(r.getCreatedBy(), String.valueOf(r.getCreatedBy()));
+         String processedName = (r.getProcessedBy()==null) ? ""
+                                : names.getOrDefault(r.getProcessedBy(), String.valueOf(r.getProcessedBy()));
+    %>
+      <tr>
+       <td>
+  <a href="${pageContext.request.contextPath}/requestdetailservlet1?id=<%= r.getId() %>">
+    <%= r.getTitle() %>
+  </a>
+</td>
+        <td><%= r.getFrom() %></td>
+        <td><%= r.getTo() %></td>
+        <td><%= createdName %></td>
+        <td class="<%= 
+              r.getStatus().name().equals("APPROVED") ? "status-approved" :
+              r.getStatus().name().equals("REJECTED") ? "status-rejected" :
+              "status-inprogress" %>">
+          <%= r.getStatus() %>
+        </td>
+        <td><%= processedName %></td>
+        <td><%= r.getProcessedNote()==null ? "" : r.getProcessedNote() %></td>
+
+        <td class="actions">
+          <% if ("IN_PROGRESS".equals(r.getStatus().name())) { %>
+            <form method="post" action="${pageContext.request.contextPath}/requestapproveservlet1">
+              <input type="hidden" name="id" value="<%= r.getId() %>"/>
+              <input class="note-input" name="note" placeholder="Ghi chú phê duyệt"/>
+              <button type="submit">Approve</button>
+            </form>
+            <form method="post" action="${pageContext.request.contextPath}/requestrejectservlet1">
+              <input type="hidden" name="id" value="<%= r.getId() %>"/>
+              <input class="note-input" name="note" placeholder="Lý do từ chối"/>
+              <button type="submit">Reject</button>
+            </form>
+          <% } else { %>
+            (Đã xử lý)
+          <% } %>
+        </td>
+      </tr>
     <% } %>
   </table>
+
   <p style="color:red">${requestScope.error}</p>
-</body></html>
+</body>
+</html>

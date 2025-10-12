@@ -73,7 +73,34 @@ public class RequestApproveServlet1 extends HttpServlet {
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp)
     throws ServletException, IOException {
-       resp.sendRedirect(req.getContextPath() + "/requestsubordinatesservlet1");
+       User me = (User) req.getSession().getAttribute("user");
+    if (me == null) { resp.sendRedirect(req.getContextPath()+"/loginservlet1"); return; }
+
+    String sId = req.getParameter("id");
+    if (sId == null) { resp.sendError(400, "Missing id"); return; }
+
+    try {
+      int id = Integer.parseInt(sId);
+      Request r = requestDAO.findById(id);
+      if (r == null) { resp.sendError(404, "Request not found"); return; }
+
+      // (tuỳ chọn) kiểm quyền: là head hoặc là quản lý trực tiếp của creator
+      // nếu bạn đã có PermissionUtil.hasRightToProcess(...), gọi ở đây.
+
+      User creator = userDAO.findById(r.getCreatedBy());
+      String approverName = me.getFullName();
+      String approverRole = (me.getRoles()!=null && !me.getRoles().isEmpty())
+              ? me.getRoles().iterator().next().getName() : "—";
+
+      req.setAttribute("reqObj", r);
+      req.setAttribute("creatorName", creator!=null?creator.getFullName():String.valueOf(r.getCreatedBy()));
+      req.setAttribute("approverName", approverName);
+      req.setAttribute("approverRole", approverRole);
+
+      req.getRequestDispatcher("/WEB-INF/views/request_approve.jsp").forward(req, resp);
+    } catch (Exception e) {
+      throw new ServletException(e);
+    }
     } 
 
     /** 
@@ -88,21 +115,16 @@ public class RequestApproveServlet1 extends HttpServlet {
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp)
     throws ServletException, IOException {
-      User manager = (User) req.getSession().getAttribute("user");
-        if (manager==null){ resp.sendRedirect(req.getContextPath()+"/loginservlet1"); return; }
+      User actor = (User) req.getSession().getAttribute("user");
+        if (actor==null){ resp.sendRedirect(req.getContextPath()+"/loginservlet1"); return; }
 
         String idStr = req.getParameter("id");
         String note  = req.getParameter("note");
-
-        // parse an toàn
         int id;
-        try {
-            if (idStr == null || idStr.isBlank()) throw new NumberFormatException("null");
-            id = Integer.parseInt(idStr);
-        } catch (NumberFormatException e) {
-            req.setAttribute("error", "Thiếu hoặc sai tham số id");
-            req.getRequestDispatcher("/WEB-INF/views/error.jsp").forward(req, resp);
-            return;
+        try { id = Integer.parseInt(idStr); }
+        catch (Exception ex) {
+            req.setAttribute("error","Thiếu hoặc sai tham số id");
+            req.getRequestDispatcher("/WEB-INF/views/error.jsp").forward(req, resp); return;
         }
 
         try {
@@ -110,16 +132,23 @@ public class RequestApproveServlet1 extends HttpServlet {
             if (r==null) throw new IllegalArgumentException("Không tìm thấy đơn");
             if (r.getStatus()!=RequestStatus.IN_PROGRESS) throw new IllegalStateException("Trạng thái không hợp lệ");
 
-            // chỉ quản lý trực tiếp mới được duyệt
-            List<Integer> subs = userDAO.findSubordinateIds(manager.getId());
-            if (!subs.contains(r.getCreatedBy()))
-                throw new SecurityException("Bạn không phải quản lý trực tiếp của nhân viên này");
+            // Quyền xử lý:
+            // 1) Quản lý trực tiếp của người tạo
+            List<Integer> directSubs = userDAO.findSubordinateIds(actor.getId());
+            boolean canAsDirectMgr = directSubs.contains(r.getCreatedBy());
+
+            // 2) Trưởng phòng của phòng mà người tạo đang thuộc
+            User creator = userDAO.findById(r.getCreatedBy());
+            boolean canAsHead = userDAO.isDepartmentHead(actor.getId(), creator.getDepartmentId());
+
+            if (!canAsDirectMgr && !canAsHead)
+                throw new SecurityException("Bạn không có quyền xử lý đơn này");
 
             boolean approve = req.getServletPath().endsWith("/requestapproveservlet1");
             RequestStatus target = approve ? RequestStatus.APPROVED : RequestStatus.REJECTED;
 
-            requestDAO.updateStatus(id, target, manager.getId(), note);
-            historyDAO.add(id, manager.getId(), RequestStatus.IN_PROGRESS.name(), target.name(), note);
+            requestDAO.updateStatus(id, target, actor.getId(), note);
+            historyDAO.add(id, actor.getId(), RequestStatus.IN_PROGRESS.name(), target.name(), note);
 
             resp.sendRedirect(req.getContextPath()+"/requestsubordinatesservlet1");
         } catch (Exception e) {

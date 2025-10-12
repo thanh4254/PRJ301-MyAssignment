@@ -15,5 +15,6 @@
         <h1>Hello World!</h1>
         <a href="${pageContext.request.contextPath}/logoutservlet1" style="margin-left:16px">Đăng xuất</a>
 
+
     </body>
 </html>

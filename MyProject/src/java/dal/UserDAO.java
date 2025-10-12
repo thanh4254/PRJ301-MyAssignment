@@ -98,4 +98,77 @@ public java.util.List<model.User> listByDepartment(int departmentId) throws Exce
         }
         return list;
     }
+// Lấy user theo ID (có nạp luôn roles & features)
+public User findById(int id) throws Exception {
+    String sql = "SELECT * FROM [User] WHERE UserID=?";
+    try (Connection c = DBContext.getConnection();
+         PreparedStatement ps = c.prepareStatement(sql)) {
+        ps.setInt(1, id);
+        try (ResultSet rs = ps.executeQuery()) {
+            if (!rs.next()) return null;
+            User u = mapUser(rs);            // dùng hàm mapUser đã có
+            u.setRoles(loadRoles(u.getId(), c)); // nạp roles & features
+            return u;
+        }
+    }
 }
+
+
+
+// Kiểm tra user có phải Trưởng phòng (Head) của department chỉ định không
+public boolean isDepartmentHead(int userId, int departmentId) throws Exception {
+    String sql = "SELECT 1 FROM Department WHERE DepartmentID=? AND ManagerUserID=?";
+    try (java.sql.Connection c = DBContext.getConnection();
+         java.sql.PreparedStatement ps = c.prepareStatement(sql)) {
+        ps.setInt(1, departmentId);
+        ps.setInt(2, userId);
+        try (java.sql.ResultSet rs = ps.executeQuery()) {
+            return rs.next();
+        }
+    }
+}
+
+// Lấy TẤT CẢ userID trong 1 phòng (để Head xem/duyệt)
+public java.util.List<Integer> findIdsInDepartment(int departmentId) throws Exception {
+    String sql = "SELECT UserID FROM [User] WHERE DepartmentID=? AND IsActive=1";
+    java.util.List<Integer> ids = new java.util.ArrayList<>();
+    try (java.sql.Connection c = DBContext.getConnection();
+         java.sql.PreparedStatement ps = c.prepareStatement(sql)) {
+        ps.setInt(1, departmentId);
+        try (java.sql.ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) ids.add(rs.getInt(1));
+        }
+    }
+    return ids;
+}
+public String getDepartmentName(int departmentId) throws Exception {
+    String sql = "SELECT Name FROM Department WHERE DepartmentID=?";
+    try (java.sql.Connection c = DBContext.getConnection();
+         java.sql.PreparedStatement ps = c.prepareStatement(sql)) {
+        ps.setInt(1, departmentId);
+        try (java.sql.ResultSet rs = ps.executeQuery()) {
+            return rs.next() ? rs.getNString(1) : String.valueOf(departmentId);
+        }
+    }
+}
+public java.util.Map<Integer,String> getFullNamesByIds(java.util.Collection<Integer> ids) throws Exception {
+    if (ids == null || ids.isEmpty()) return java.util.Collections.emptyMap();
+    String placeholders = String.join(",", java.util.Collections.nCopies(ids.size(), "?"));
+    String sql = "SELECT UserID, FullName FROM [User] WHERE UserID IN ("+placeholders+")";
+
+    java.util.Map<Integer,String> map = new java.util.HashMap<>();
+    try (java.sql.Connection c = DBContext.getConnection();
+         java.sql.PreparedStatement ps = c.prepareStatement(sql)) {
+        int i = 1;
+        for (Integer id : ids) ps.setInt(i++, id);
+        try (java.sql.ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) map.put(rs.getInt(1), rs.getNString(2));
+        }
+    }
+    return map;
+    
+}
+
+
+}
+

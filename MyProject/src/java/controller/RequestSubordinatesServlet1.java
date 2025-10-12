@@ -4,7 +4,7 @@
  */
 
 package controller;
-
+import dal.UserDAO;
 import java.io.IOException;
 import java.io.PrintWriter;
 import jakarta.servlet.ServletException;
@@ -65,15 +65,26 @@ public class RequestSubordinatesServlet1 extends HttpServlet {
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp)
     throws ServletException, IOException {
-       User manager = (User) req.getSession().getAttribute("user");
-        if (manager==null){ resp.sendRedirect(req.getContextPath()+"/loginservlet1"); return; }
-        try {
-            List<Integer> subs = userDAO.findSubordinateIds(manager.getId());
-            req.setAttribute("items", requestDAO.listByCreators(subs));
-            req.getRequestDispatcher("/WEB-INF/views/request_subordinates.jsp").forward(req, resp);
-        } catch (Exception e) {
-            throw new ServletException(e);
-        }
+       User viewer = (User) req.getSession().getAttribute("user");
+    if (viewer==null){ resp.sendRedirect(req.getContextPath()+"/loginservlet1"); return; }
+
+    try {
+        boolean isHead = userDAO.isDepartmentHead(viewer.getId(), viewer.getDepartmentId());
+        java.util.List<Integer> targetIds = isHead
+            ? userDAO.findIdsInDepartment(viewer.getDepartmentId())
+            : userDAO.findSubordinateIds(viewer.getId());
+
+        java.util.List<model.Request> items = new dal.RequestDAO().listByCreators(targetIds);
+
+        java.util.Set<Integer> ids = new java.util.HashSet<>(targetIds); // createdBy
+        for (model.Request r : items) if (r.getProcessedBy()!=null) ids.add(r.getProcessedBy());
+        java.util.Map<Integer,String> names = userDAO.getFullNamesByIds(ids);
+
+        req.setAttribute("items", items);
+        req.setAttribute("names", names);
+    } catch (Exception e) { throw new ServletException(e); }
+
+    req.getRequestDispatcher("/WEB-INF/views/request_subordinates.jsp").forward(req, resp);
     } 
 
     /** 

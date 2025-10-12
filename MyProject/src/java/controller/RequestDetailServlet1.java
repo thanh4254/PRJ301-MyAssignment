@@ -4,7 +4,8 @@
  */
 
 package controller;
-
+import dal.RequestDAO;
+import dal.UserDAO;
 import java.io.IOException;
 import java.io.PrintWriter;
 import jakarta.servlet.ServletException;
@@ -25,7 +26,8 @@ import model.User;
  */
 @WebServlet(name="RequestDetailServlet1", urlPatterns={"/requestdetailservlet1"})
 public class RequestDetailServlet1 extends HttpServlet {
-     private final RequestDAO dao = new RequestDAO();
+      private final RequestDAO requestDAO = new RequestDAO();
+  private final UserDAO userDAO = new UserDAO();
     /** 
      * Processes requests for both HTTP <code>GET</code> and <code>POST</code> methods.
      * @param request servlet request
@@ -63,18 +65,34 @@ public class RequestDetailServlet1 extends HttpServlet {
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp)
     throws ServletException, IOException {
-        User u = (User) req.getSession().getAttribute("user");
-        if (u==null){ resp.sendRedirect(req.getContextPath()+"/loginservlet1"); return; }
-        try {
-            int id = Integer.parseInt(req.getParameter("id"));
-            Request r = dao.findById(id);
-            if (r==null || (r.getCreatedBy()!=u.getId())) {
-                req.setAttribute("error","Không tìm thấy hoặc không có quyền xem đơn này");
-                req.getRequestDispatcher("/WEB-INF/views/error.jsp").forward(req, resp); return;
-            }
-            req.setAttribute("r", r);
-            req.getRequestDispatcher("/WEB-INF/views/request_detail.jsp").forward(req, resp);
-        } catch (Exception e) { throw new ServletException(e); }
+       User me = (User) req.getSession().getAttribute("user");
+    if (me == null) { resp.sendRedirect(req.getContextPath()+"/loginservlet1"); return; }
+
+    String sid = req.getParameter("id");
+    if (sid == null) { resp.sendError(400, "Missing id"); return; }
+
+    try {
+      int id = Integer.parseInt(sid);
+      Request r = requestDAO.findById(id);
+      if (r == null) { resp.sendError(404, "Request not found"); return; }
+
+      // (tuỳ chọn) có thể chèn kiểm tra quyền xử lý ở đây
+
+      User creator = userDAO.findById(r.getCreatedBy());
+      String approverName = me.getFullName();
+      String approverRole = (me.getRoles()!=null && !me.getRoles().isEmpty())
+              ? me.getRoles().iterator().next().getName() : "—";
+
+      req.setAttribute("reqObj", r);
+      req.setAttribute("creatorName",
+              creator!=null ? creator.getFullName() : String.valueOf(r.getCreatedBy()));
+      req.setAttribute("approverName", approverName);
+      req.setAttribute("approverRole", approverRole);
+
+      req.getRequestDispatcher("/WEB-INF/views/request_detail.jsp").forward(req, resp);
+    } catch (Exception e) {
+      throw new ServletException(e);
+    }
     } 
 
     /** 
