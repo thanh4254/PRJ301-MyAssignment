@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<web-app xmlns="https://jakarta.ee/xml/ns/jakartaee"
+	 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	 xsi:schemaLocation="https://jakarta.ee/xml/ns/jakartaee https://jakarta.ee/xml/ns/jakartaee/web-app_6_0.xsd"
+	 version="6.0">
+  <display-name>MyProject</display-name>
+
+  <servlet><servlet-name>LoginServlet1</servlet-name>
+    <servlet-class>controller.LoginServlet1</servlet-class></servlet>
+  <servlet-mapping><servlet-name>LoginServlet1</servlet-name>
+    <url-pattern>/loginservlet1</url-pattern></servlet-mapping>
+
+  <servlet><servlet-name>RequestListMyServlet1</servlet-name>
+    <servlet-class>controller.RequestListMyServlet1</servlet-class></servlet>
+  <servlet-mapping><servlet-name>RequestListMyServlet1</servlet-name>
+    <url-pattern>/requestlistmyservlet1</url-pattern></servlet-mapping>
+
+  <servlet><servlet-name>RequestCreateServlet1</servlet-name>
+    <servlet-class>controller.RequestCreateServlet1</servlet-class></servlet>
+  <servlet-mapping><servlet-name>RequestCreateServlet1</servlet-name>
+    <url-pattern>/requestcreateservlet1</url-pattern></servlet-mapping>
+
+  <servlet><servlet-name>RequestSubordinatesServlet1</servlet-name>
+    <servlet-class>controller.RequestSubordinatesServlet1</servlet-class></servlet>
+  <servlet-mapping><servlet-name>RequestSubordinatesServlet1</servlet-name>
+    <url-pattern>/requestsubordinatesservlet1</url-pattern></servlet-mapping>
+
+  <servlet><servlet-name>RequestApproveServlet1</servlet-name>
+    <servlet-class>controller.RequestApproveServlet1</servlet-class></servlet>
+  <servlet-mapping><servlet-name>RequestApproveServlet1</servlet-name>
+    <url-pattern>/requestapproveservlet1</url-pattern></servlet-mapping>
+  <servlet-mapping><servlet-name>RequestApproveServlet1</servlet-name>
+    <url-pattern>/requestrejectservlet1</url-pattern></servlet-mapping>
+
+  <servlet><servlet-name>AgendaServlet1</servlet-name>
+    <servlet-class>controller.AgendaServlet1</servlet-class></servlet>
+  <servlet-mapping><servlet-name>AgendaServlet1</servlet-name>
+    <url-pattern>/agendaservlet1</url-pattern></servlet-mapping>
+
+  <servlet><servlet-name>LogoutServlet1</servlet-name>
+    <servlet-class>controller.LogoutServlet1</servlet-class></servlet>
+  <servlet-mapping><servlet-name>LogoutServlet1</servlet-name>
+    <url-pattern>/logoutservlet1</url-pattern></servlet-mapping>
+
+  <servlet><servlet-name>RequestDetailServlet1</servlet-name>
+    <servlet-class>controller.RequestDetailServlet1</servlet-class></servlet>
+  <servlet-mapping><servlet-name>RequestDetailServlet1</servlet-name>
+    <url-pattern>/requestdetailservlet1</url-pattern></servlet-mapping>
+</web-app>
