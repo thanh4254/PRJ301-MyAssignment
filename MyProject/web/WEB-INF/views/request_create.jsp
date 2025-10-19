@@ -16,6 +16,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
+  <link rel="stylesheet" href="${pageContext.request.contextPath}/css/theme.css">
   <title>Tạo đơn xin nghỉ</title>
   <style>
     body { font-family: Arial, sans-serif; background:#f7f7f7; }

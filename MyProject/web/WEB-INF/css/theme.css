@@ -1,0 +1,80 @@
+/*
+Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
+Click nbfs://nbhost/SystemFileSystem/Templates/JSP_Servlet/CascadeStyleSheet.css to edit this template
+*/
+/* 
+    Created on : Oct 19, 2025, 4:38:50 PM
+    Author     : Admin
+*/
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root{
+  --text: #0f172a;        /* slate-900 */
+  --subtle:#475569;       /* slate-600 */
+  --muted:#64748b;        /* slate-500 */
+}
+
+html,body{
+  font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+/* Tiêu đề trang */
+h1{
+  font-size: 2rem;        /* ~32px */
+  line-height: 1.2;
+  font-weight: 800;
+  margin: 0 0 14px;
+}
+
+/* Tiêu đề mục nhỏ */
+h2{
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin: 18px 0 10px;
+}
+
+/* Nhãn/label mô tả (xám nhẹ) */
+.label, .muted, .subtle { color: var(--subtle); }
+
+/* Link điều hướng đầu trang */
+.topnav{
+  display:flex; gap:24px; align-items:center;
+  margin: 18px 0 14px;
+}
+.topnav a{ color:#1d4ed8; text-decoration:none; font-weight:600; }
+.topnav a:hover{ text-decoration:underline; }
+
+/* Khung card chung (giống trang detail) */
+.card{
+  background:#edf5ff;     /* xanh rất nhạt giống ảnh */
+  border:1px solid #dbeafe;
+  border-radius:12px;
+  padding:20px;
+}
+
+/* Input/textarea nhất quán */
+input[type=text], input[type=date], textarea, select{
+  font: inherit;
+  color: inherit;
+  border:1px solid #cbd5e1;
+  border-radius:10px;
+  padding:10px 12px;
+  outline:none;
+}
+textarea{ width:100%; min-height:140px; resize:vertical; }
+
+/* Nút chuẩn (đang dùng ở detail) */
+.btn{ 
+  appearance:none; border:0; border-radius:12px; padding:12px 22px;
+  font-weight:700; cursor:pointer;
+}
+.btn-primary{ background:#2563eb; color:#fff; }
+.btn-secondary{ background:#7aa6ff; color:#fff; }
+.btn:disabled{ opacity:.6; cursor:not-allowed; }
+
+/* Hỗ trợ canh phải khu hành động */
+.actions{ display:flex; gap:14px; justify-content:flex-end; margin-top:16px; }
+

@@ -8,6 +8,7 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <link rel="stylesheet" href="${pageContext.request.contextPath}/css/theme.css">
   <meta charset="UTF-8">
   <title>Đơn của tôi</title>
   <style>
