@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.util.*;
 import model.Request;
 import model.User;
+import model.RequestStatus;
 
 @WebServlet(name="RequestDetailServlet1", urlPatterns={"/requestdetailservlet1"})
 public class RequestDetailServlet1 extends HttpServlet {
@@ -26,32 +27,36 @@ public class RequestDetailServlet1 extends HttpServlet {
       Request r = requestDAO.findById(id);
       if (r == null) throw new IllegalArgumentException("Không tìm thấy đơn.");
 
-      // Tên người tạo / người xử lý (nếu có)
+      // tên người tạo / người xử lý
       Set<Integer> ids = new HashSet<>();
       ids.add(r.getCreatedBy());
       if (r.getProcessedBy()!=null) ids.add(r.getProcessedBy());
       Map<Integer,String> names = userDAO.getFullNamesByIds(ids);
 
-      // thông tin người duyệt (chính là người đang đăng nhập)
-      String approverName = me.getFullName();
-      String approverRole = "—";
-      if (me.getRoles()!=null && !me.getRoles().isEmpty())
-        approverRole = me.getRoles().iterator().next().getName();
-
-      // kiểm tra có được phép duyệt không
-      boolean canApprove = false;
-      if (PermissionUtil.hasFeatureCode(me, "REQ_APPROVE")) {
-        // được duyệt nếu là quản lý trực tiếp hoặc là Head của phòng người tạo
-        if (PermissionUtil.canProcess(me, r.getCreatedBy(), userDAO)) {
-          canApprove = true;
+      // Chỉ hiển thị người duyệt khi đơn đã được xử lý (khác NEW)
+      String approverName = "";
+      String approverRole = "";
+      if (r.getProcessedBy()!=null && r.getStatus() != RequestStatus.NEW) {
+        approverName = names.getOrDefault(r.getProcessedBy(), String.valueOf(r.getProcessedBy()));
+        // role của người duyệt không cần quá chuẩn xác -> lấy role đầu tiên
+        User approver = userDAO.findById(r.getProcessedBy());
+        if (approver != null && approver.getRoles()!=null && !approver.getRoles().isEmpty()) {
+          approverRole = approver.getRoles().iterator().next().getName();
         }
       }
+
+      // Chỉ cho duyệt khi: có quyền + là người có thẩm quyền với nhân viên tạo + đơn đang NEW + không phải đơn của chính mình
+      boolean canApprove = PermissionUtil.hasFeatureCode(me, "REQ_APPROVE")
+          && PermissionUtil.canProcess(me, r.getCreatedBy(), userDAO)
+          && r.getStatus() == RequestStatus.NEW
+          && me.getId() != r.getCreatedBy();
 
       req.setAttribute("item", r);
       req.setAttribute("names", names);
       req.setAttribute("approverName", approverName);
       req.setAttribute("approverRole", approverRole);
-      req.setAttribute("creatorName", names.getOrDefault(r.getCreatedBy(), String.valueOf(r.getCreatedBy())));
+      req.setAttribute("creatorName",
+          names.getOrDefault(r.getCreatedBy(), String.valueOf(r.getCreatedBy())));
       req.setAttribute("canApprove", canApprove);
 
       req.getRequestDispatcher("/WEB-INF/views/request_detail.jsp").forward(req, resp);
@@ -61,4 +66,3 @@ public class RequestDetailServlet1 extends HttpServlet {
     }
   }
 }
-

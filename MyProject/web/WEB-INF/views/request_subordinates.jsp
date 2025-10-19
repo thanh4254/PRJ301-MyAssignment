@@ -82,6 +82,12 @@
     .status-new{  color:#d97706; } /* In-progress */
     .status-ok{   color:#16a34a; } /* Approved    */
     .status-bad{  color:#dc2626; } /* Rejected    */
+    .tbl td.status-cell{ font-weight:800; white-space:nowrap; }
+
+/* dùng !important để thắng các rule nền có thể đang áp màu chữ */
+.tbl td.status-new{  color:#d97706 !important; } /* In-progress */
+.tbl td.status-ok{   color:#16a34a !important; } /* Approved    */
+.tbl td.status-bad{  color:#dc2626 !important; } /* Rejected    */
   </style>
 </head>
 <body>
