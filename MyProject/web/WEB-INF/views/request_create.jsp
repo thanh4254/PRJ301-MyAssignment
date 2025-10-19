@@ -5,82 +5,119 @@
 --%>
 
 <%@ page contentType="text/html; charset=UTF-8" %>
-<%@ page import="model.User" %>
+<%@ page import="model.User,model.Role,dal.UserDAO" %>
 <%
+  String ctx = request.getContextPath();
   User me = (User) session.getAttribute("user");
-  // Các biến đã được servlet set sẵn:
-  String roleName = (String) request.getAttribute("roleName");
-  String depName  = (String) request.getAttribute("depName");
+  String roleName = (me!=null && me.getRoles()!=null && !me.getRoles().isEmpty())
+      ? me.getRoles().iterator().next().getName() : "";
+
+  // Lấy tên phòng ban (ưu tiên attr từ servlet, fallback gọi DAO)
+  String depName = (String) request.getAttribute("depName");
+  if (depName == null && me != null) {
+    try { depName = new UserDAO().getDepartmentName(me.getDepartmentId()); }
+    catch (Exception ignore) { depName = String.valueOf(me.getDepartmentId()); }
+  }
+  if (depName == null) depName = "";
 %>
 <!DOCTYPE html>
-<html>
+<html lang="vi">
 <head>
   <meta charset="UTF-8">
-  <link rel="stylesheet" href="${pageContext.request.contextPath}/css/theme.css">
-  <title>Tạo đơn xin nghỉ</title>
+  <title>Tạo đơn</title>
+  <link rel="stylesheet" href="<%=ctx%>/css/theme.css"><!-- nền chung -->
+
   <style>
-    body { font-family: Arial, sans-serif; background:#f7f7f7; }
-    .card {
-      width: 560px; margin: 40px auto; padding: 18px 22px;
-      background:#f9e1cf; border:2px solid #b99d8a; border-radius:4px;
-      box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+    html,body{font-family:Inter,system-ui,Arial,sans-serif}
+
+    .page{max-width:900px;margin:28px auto;padding:0 16px}
+
+    /* card kiểu glass, chữ đen */
+    .glass{
+      color:#0f172a;
+      background:rgba(255,255,255,.08);
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:18px;padding:18px;
+      box-shadow:0 18px 50px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.08);
+      backdrop-filter:blur(14px);
     }
-    h2 { margin: 0 0 12px 0; }
-    .row { margin: 10px 0; }
-    label { display:inline-block; width: 90px; }
-    input[type="date"]{ padding:6px 8px; border:1px solid #aaa; border-radius:4px; }
-    textarea { width:100%; height:120px; padding:8px; border:1px solid #aaa; border-radius:4px; resize: vertical; }
-    .actions { text-align:right; margin-top: 14px; }
-    .btn {
-      padding: 10px 22px; border:0; border-radius:6px;
-      background:#3e73c5; color:#fff; font-size:18px; cursor:pointer;
+    .title{margin:6px 2px 14px;font-size:28px;font-weight:800}
+
+    /* PILL BUTTON giống list */
+    .pills{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+    .btn-pill{
+      appearance:none; display:inline-flex; align-items:center; gap:8px;
+      padding:10px 16px; border-radius:14px; font-weight:800; text-decoration:none;
+      color:#0f172a; background:rgba(255,255,255,.35);
+      border:1px solid rgba(15,23,42,.22);
+      box-shadow:0 6px 16px rgba(0,0,0,.18);
+      backdrop-filter: blur(6px);
+      cursor:pointer; transition:filter .15s, transform .02s;
     }
-    .btn:hover { filter: brightness(1.1); }
-    .muted { color:#444; }
-    .links { width:560px; margin: 0 auto; }
-    .links a { margin-right:14px; }
-    .error { color:#b22; }
+    .btn-pill:hover{filter:brightness(1.05)}
+    .btn-pill:active{transform:translateY(1px)}
+
+    /* input/textarea */
+    .row{display:grid;grid-template-columns:150px 1fr;gap:10px 12px;align-items:center;margin:10px 0}
+    label{font-weight:700}
+    input[type="date"],input[type="text"],textarea,select{
+      width:100%; box-sizing:border-box; color:#0f172a;
+      background:rgba(255,255,255,.55); border:1px solid rgba(15,23,42,.18);
+      border-radius:12px; padding:12px;
+    }
+    input::placeholder,textarea::placeholder{color:#475569}
+    textarea{min-height:150px;resize:vertical}
+
+    .actions{display:flex;justify-content:flex-end;margin-top:12px}
   </style>
 </head>
 <body>
+  <div class="page">
+    <div class="glass">
 
-<div class="links">
-  <a href="${pageContext.request.contextPath}/requestlistmyservlet1">← Đơn của tôi</a>
-  <a href="${pageContext.request.contextPath}/requestsubordinatesservlet1">Đơn cấp dưới</a>
-  <a href="${pageContext.request.contextPath}/logoutservlet1">Đăng xuất</a>
-</div>
+      <!-- các nút điều hướng dạng pill -->
+      <div class="pills">
+        <a class="btn-pill" href="<%=ctx%>/requestlistmyservlet1">← Đơn của tôi</a>
+        <a class="btn-pill" href="<%=ctx%>/requestsubordinatesservlet1">Đơn cấp dưới</a>
+        <a class="btn-pill" href="<%=ctx%>/logoutservlet1">Đăng xuất</a>
+      </div>
 
-<div class="card">
-  <h2>Đơn xin nghỉ phép</h2>
-  <div class="muted">
-    User: <b><%= me.getUsername() %></b> ,
-    Role: <b><%= roleName %></b>,
-    Dep: <b><%= depName %></b>
+      <div class="title">Đơn xin nghỉ phép</div>
+
+      <div style="margin-bottom:10px">
+        User: <strong><%= (me!=null? me.getUsername() : "") %></strong>,
+        Role: <strong><%= roleName %></strong>,
+        Dep:  <strong><%= depName %></strong>
+      </div>
+
+      <form method="post" action="<%=ctx%>/requestcreateservlet1">
+        <div class="row">
+          <label for="from">Từ ngày:</label>
+          <input id="from" type="date" name="from">
+        </div>
+
+        <div class="row">
+          <label for="to">Tới ngày:</label>
+          <input id="to" type="date" name="to">
+        </div>
+
+        <div class="row" style="grid-template-columns:150px 1fr">
+          <label for="reason">Lý do:</label>
+          <textarea id="reason" name="note" placeholder="Nhập lý do..."></textarea>
+        </div>
+
+        <!-- nút Gửi cũng là pill -->
+        <div class="actions">
+          <button type="submit" class="btn-pill">Gửi</button>
+        </div>
+
+        <p style="color:#b00020;font-weight:700;margin-top:10px">
+          <%= request.getAttribute("error")!=null ? request.getAttribute("error") : "" %>
+        </p>
+      </form>
+
+    </div>
   </div>
-
-  <form method="post" action="${pageContext.request.contextPath}/requestcreateservlet1">
-    <div class="row">
-      <label>Từ ngày:</label>
-      <input type="date" name="from" required />
-    </div>
-    <div class="row">
-      <label>Tới ngày:</label>
-      <input type="date" name="to" required />
-    </div>
-    <div class="row">
-      <label style="vertical-align:top">Lý do:</label>
-      <textarea name="reason" placeholder="Nhập lý do..." required></textarea>
-    </div>
-
-    <div class="actions">
-      <button class="btn" type="submit">Gửi</button>
-    </div>
-  </form>
-
-  <div class="error">${requestScope.error}</div>
-  <div class="muted">${requestScope.message}</div>
-</div>
-
 </body>
 </html>
-

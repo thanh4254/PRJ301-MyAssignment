@@ -4,150 +4,115 @@
     Author     : Admin
 --%>
 
-<%@ page contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" %>
-<%@ page import="model.Request, model.User, model.Role, java.util.*" %>
+<%-- WEB-INF/views/request_detail.jsp --%>
+<%@ page contentType="text/html; charset=UTF-8" %>
+<%@ page import="model.Request" %>
 <%
-    Request r = (Request) request.getAttribute("item");
-    Map<Integer,String> names = (Map<Integer,String>) request.getAttribute("names");
-    boolean canApprove = Boolean.TRUE.equals(request.getAttribute("canApprove"));
-
-    User me = (User) session.getAttribute("user");
-    String approverName = (me != null ? me.getFullName() : "");
-    String approverRole = "—";
-    if (me != null && me.getRoles() != null && !me.getRoles().isEmpty()) {
-        Role first = me.getRoles().iterator().next();
-        approverRole = first.getName();
-    }
-    String creatorName = (names != null)
-            ? names.getOrDefault(r.getCreatedBy(), String.valueOf(r.getCreatedBy()))
-            : String.valueOf(r.getCreatedBy());
-
-    String st = r.getStatus().name();                         // VD: NEW / IN_PROGRESS / APPROVED / REJECTED
-    boolean pending = !( "APPROVED".equals(st) || "REJECTED".equals(st) );
+  String ctx = request.getContextPath();
+  Request r = (Request) request.getAttribute("item");
+  String approverName = (String) request.getAttribute("approverName");
+  String approverRole = (String) request.getAttribute("approverRole");
+  String creatorName  = (String) request.getAttribute("creatorName");
+  String err = (String) request.getAttribute("error");
 %>
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-    <link rel="stylesheet" href="${pageContext.request.contextPath}/css/theme.css">
-<meta charset="UTF-8">
-<title>Chi tiết đơn nghỉ phép</title>
-<style>
-  :root {
-    --blue-50:#eaf2ff; --blue-100:#d7e6ff; --blue-500:#2f6edb; --blue-600:#2358b1;
-    --text:#10223d; --muted:#5a6d86; --danger:#c0392b;
-  }
-  /* Font & layout */
-  body { margin:24px; color:var(--text);
-         font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,Helvetica,sans-serif;
-         line-height:1.5; font-size:16px; }
-  /* Nav top */
-  .topnav { display:flex; gap:18px; margin-bottom:18px; }
-  .topnav a { color:var(--blue-600); font-weight:600; text-decoration:none; }
-  .topnav a:hover { text-decoration:underline; }
+  <meta charset="UTF-8">
+  <title>Duyệt đơn xin nghỉ phép</title>
+  <link rel="stylesheet" href="<%=ctx%>/css/theme.css"/>
 
-  /* Card */
-  .card { width:620px; background:var(--blue-50); border:1px solid var(--blue-100);
-          border-radius:8px; padding:18px 20px; }
-  .title { font-size:24px; font-weight:800; margin:4px 0 14px; }
-  .row { margin:10px 0; }
-  .label { color:var(--muted); margin-right:6px; }
-  .mono { font-variant-numeric: tabular-nums; }
-  textarea { width:100%; height:140px; padding:10px; resize:vertical;
-             border:1px solid #b8cbf8; border-radius:6px; font-size:15px; background:#fff; }
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+    html,body{font-family:Inter,system-ui,Arial,sans-serif}
+    .page{max-width:900px;margin:28px auto;padding:0 16px}
 
-.actions {
-  display: flex;
-  gap: 14px;
-  margin-top: 16px;
-  justify-content: flex-end;   /* đẩy nút sang phải */
-  align-items: center;
-}
-  .btn { border:none; padding:11px 26px; border-radius:10px;
-         font-weight:800; font-size:16px; cursor:pointer; transition:.15s; }
-  .btn-approve { background:var(--blue-500); color:#fff; }
-  .btn-approve:hover { background:var(--blue-600); transform:translateY(-1px); }
-  .btn-reject { background:#7aa2ff; color:#fff; }
-  .btn-reject:hover { background:#5b8fff; transform:translateY(-1px); }
+    .glass{
+      color:#0f172a;
+      background:rgba(255,255,255,.08);
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:18px;padding:18px;
+      box-shadow:0 18px 50px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.08);
+      backdrop-filter:blur(14px);
+    }
+    .topnav{display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+    .btn-pill{
+      display:inline-flex;align-items:center;gap:8px;padding:10px 16px;
+      border-radius:14px;font-weight:800;text-decoration:none;cursor:pointer;
+      color:#0f172a;background:rgba(255,255,255,.35);
+      border:1px solid rgba(15,23,42,.22);
+      box-shadow:0 6px 16px rgba(0,0,0,.18);backdrop-filter:blur(6px);
+      transition:filter .15s,transform .02s;
+    }
+    .btn-pill:hover{filter:brightness(1.05)} .btn-pill:active{transform:translateY(1px)}
+    .title{margin:6px 2px 14px;font-size:28px;font-weight:800;letter-spacing:.2px}
 
-  .hint { color:var(--muted); margin-top:10px; }
-  .status { font-weight:800; }
-  .status.approved { color:#237a36; }
-  .status.rejected { color:var(--danger); }
-  .status.progress { color:#aa7a00; }
-</style>
+    .row{display:grid;grid-template-columns:140px 1fr;gap:10px 12px;margin:10px 0;align-items:center}
+    .label{font-weight:700}
+
+    .textbox, textarea{
+      width:100%;box-sizing:border-box;color:#0f172a;
+      background:rgba(255,255,255,.55);border:1px solid rgba(15,23,42,.18);
+      border-radius:10px;padding:10px 12px;outline:none;
+    }
+    textarea{min-height:160px;resize:vertical}
+    ::placeholder{color:#475569}
+
+    .actions{display:flex;gap:12px;justify-content:flex-end;margin-top:12px;flex-wrap:wrap}
+    .btn-approve,.btn-reject{
+      border:1px solid rgba(15,23,42,.22);
+      background:rgba(255,255,255,.35); color:#0f172a;
+      border-radius:14px; padding:10px 18px; font-weight:800; cursor:pointer;
+      box-shadow:0 6px 16px rgba(0,0,0,.18);
+    }
+    .btn-approve{ box-shadow:0 6px 16px rgba(16,185,129,.25) }
+    .btn-reject { box-shadow:0 6px 16px rgba(239,68,68,.25) }
+
+    .error{color:#b00020;font-weight:700;margin-top:10px}
+    .glass, .glass * { color: inherit }
+  </style>
 </head>
 <body>
-
-  <!-- NAVIGATION ON TOP -->
-  <div class="topnav">
-    <a href="${pageContext.request.contextPath}/requestsubordinatesservlet1">Đơn cấp dưới</a>
-    <a href="${pageContext.request.contextPath}/requestlistmyservlet1">Đơn của tôi</a>
-    <a href="${pageContext.request.contextPath}/logoutservlet1">Đăng xuất</a>
-  </div>
-
-  <!-- APPROVAL CARD -->
-  <div class="card">
-    <div class="title">Duyệt đơn xin nghỉ phép</div>
-
-    <div class="row">
-      <span class="label">Duyệt bởi User:</span>
-      <strong><%= approverName %></strong>
-      <span class="label">, Role:</span>
-      <strong><%= approverRole %></strong>
-    </div>
-
-    <div class="row"><span class="label">Tạo bởi:</span> <strong><%= creatorName %></strong></div>
-    <div class="row"><span class="label">Từ ngày:</span> <span class="mono"><%= r.getFrom() %></span></div>
-    <div class="row"><span class="label">Tới ngày:</span> <span class="mono"><%= r.getTo() %></span></div>
-
-    <div class="row"><span class="label">Lý do:</span></div>
-
-    <!-- Nếu được quyền & đơn chưa xử lý -> hiển thị 2 nút -->
-    <% if (canApprove && pending) { %>
-      <textarea id="noteBox" placeholder="Nhập lý do / ghi chú…"></textarea>
-
-      <div class="actions">
-        <!-- REJECT -->
-        <form id="rejectForm" method="post" action="${pageContext.request.contextPath}/requestrejectservlet1" style="margin:0">
-          <input type="hidden" name="id" value="<%= r.getId() %>"/>
-          <input type="hidden" name="note" id="rejectNote"/>
-          <button class="btn btn-reject" type="submit">Reject</button>
-        </form>
-
-        <!-- APPROVE -->
-        <form id="approveForm" method="post" action="${pageContext.request.contextPath}/requestapproveservlet1" style="margin:0">
-          <input type="hidden" name="id" value="<%= r.getId() %>"/>
-          <input type="hidden" name="note" id="approveNote"/>
-          <button class="btn btn-approve" type="submit">Approve</button>
-        </form>
+  <div class="page">
+    <div class="glass">
+      <div class="topnav">
+        <a class="btn-pill" href="<%=ctx%>/requestsubordinatesservlet1">← Đơn cấp dưới</a>
+        <a class="btn-pill" href="<%=ctx%>/requestlistmyservlet1">Đơn của tôi</a>
+        <a class="btn-pill" href="<%=ctx%>/logoutservlet1">Đăng xuất</a>
       </div>
 
-      <script>
-        // Đưa nội dung textarea vào cả 2 form trước khi gửi
-        const noteBox = document.getElementById('noteBox');
-        document.getElementById('rejectForm').addEventListener('submit', e=>{
-          document.getElementById('rejectNote').value = noteBox.value;
-        });
-        document.getElementById('approveForm').addEventListener('submit', e=>{
-          document.getElementById('approveNote').value = noteBox.value;
-        });
-      </script>
+      <div class="title">Duyệt đơn xin nghỉ phép</div>
 
-    <% } else { %>
-      <!-- Đã xử lý hoặc không có quyền: chỉ hiển thị ghi chú & trạng thái -->
-      <textarea readonly><%= r.getProcessedNote()==null ? "" : r.getProcessedNote() %></textarea>
-      <div class="hint">
-        Trạng thái:
-        <span class="status <%= st.equals("APPROVED")?"approved":(st.equals("REJECTED")?"rejected":"progress") %>">
-          <%= st %>
-        </span>
-        <% if (r.getProcessedBy()!=null && names!=null) { %>
-          — bởi <%= names.getOrDefault(r.getProcessedBy(), String.valueOf(r.getProcessedBy())) %>
+      <div class="row"><div class="label">Duyệt bởi User:</div>
+        <div><strong><%= approverName %></strong>, Role: <strong><%= approverRole %></strong></div></div>
+      <div class="row"><div class="label">Tạo bởi:</div> <div><strong><%= creatorName %></strong></div></div>
+      <div class="row"><div class="label">Từ ngày:</div> <div><%= r.getFrom() %></div></div>
+      <div class="row"><div class="label">Tới ngày:</div><div><%= r.getTo() %></div></div>
+
+      <!-- Một FORM – hai nút với 2 đích khác nhau -->
+      <form method="post" action="<%=ctx%>/requestapproveservlet1">
+        <input type="hidden" name="id" value="<%= r.getId() %>">
+
+        <div class="row" style="grid-template-columns:140px 1fr;">
+          <div class="label">Lý do:</div>
+          <textarea name="note" placeholder="Nhập lý do / ghi chú..."></textarea>
+        </div>
+
+        <div class="actions">
+          <!-- Gửi sang reject -->
+          <button type="submit"
+                  class="btn-reject"
+                  formaction="<%=ctx%>/requestrejectservlet1">Reject</button>
+
+          <!-- Mặc định action của form là approve -->
+          <button type="submit" class="btn-approve">Approve</button>
+        </div>
+
+        <% if (err != null) { %>
+          <div class="error"><%= err %></div>
         <% } %>
-      </div>
-    <% } %>
+      </form>
+    </div>
   </div>
-
-  <p style="color:#c00; margin-top:14px;"><%= (request.getAttribute("error")!=null? request.getAttribute("error"):"") %></p>
 </body>
 </html>

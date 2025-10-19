@@ -17,24 +17,20 @@ public class RequestCreateServlet1 extends HttpServlet {
   private final RequestDAO requestDAO = new RequestDAO();
   private final UserDAO    userDAO    = new UserDAO();
 
-  @Override protected void doGet(HttpServletRequest req, HttpServletResponse resp)
-      throws ServletException, IOException {
-    User u = (User) req.getSession().getAttribute("user");
-    if (u == null) { resp.sendRedirect(req.getContextPath()+"/loginservlet1"); return; }
-    if (!PermissionUtil.hasFeatureCode(u, "REQ_CREATE")) {
-      req.setAttribute("error", "Bạn không có quyền tạo đơn.");
-      req.getRequestDispatcher("/WEB-INF/views/error.jsp").forward(req, resp);
-      return;
-    }
+  @Override
+protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+        throws ServletException, IOException {
     try {
-      String roleName = (u.getRoles()!=null && !u.getRoles().isEmpty())
-          ? u.getRoles().iterator().next().getName() : "—";
-      String depName  = userDAO.getDepartmentName(u.getDepartmentId());
-      req.setAttribute("roleName", roleName);
-      req.setAttribute("depName",  depName);
-    } catch (Exception ignore) {}
-    req.getRequestDispatcher("/WEB-INF/views/request_create.jsp").forward(req, resp);
-  }
+        User me = (User) req.getSession().getAttribute("user");
+        if (me != null) {
+            String depName = new UserDAO().getDepartmentName(me.getDepartmentId());
+            req.setAttribute("depName", depName);   // đưa tên phòng ban sang JSP
+        }
+        req.getRequestDispatcher("/WEB-INF/views/request_create.jsp").forward(req, resp);
+    } catch (Exception e) {
+        throw new ServletException(e);
+    }
+}
 
   @Override protected void doPost(HttpServletRequest req, HttpServletResponse resp)
       throws ServletException, IOException {

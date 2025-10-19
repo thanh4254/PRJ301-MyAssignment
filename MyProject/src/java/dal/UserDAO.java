@@ -79,7 +79,7 @@ public class UserDAO {
 
     // -------------------- Queries chính --------------------
     // Login
-   public User findByUsername(String username) throws Exception {
+  public User findByUsername(String username) throws Exception {
     String sql = "SELECT * FROM [User] WHERE Username=? AND IsActive=1";
     try (Connection c = DBContext.getConnection();
          PreparedStatement ps = c.prepareStatement(sql)) {
@@ -87,8 +87,7 @@ public class UserDAO {
         try (ResultSet rs = ps.executeQuery()) {
             if (!rs.next()) return null;
             User u = mapUser(rs);
-            // CHỖ SỬA:
-            u.setRoles(new ArrayList<>(loadRoles(u.getId(), c)));
+           u.setRoles(new ArrayList<>(loadRoles(u.getId(), c))); // trả về Set<Role>, đừng cast List
             return u;
         }
     }
