@@ -4,24 +4,22 @@
  */
 package dal;
 import java.security.MessageDigest;
-/**
- *
- * @author Admin
- */
-public final class PasswordUtil {
-    private PasswordUtil(){}
-    public static String toSha256Hex(String raw){
-        if(raw==null) return null;
-        try{
+
+public class PasswordUtil {
+    public static String sha256Hex(String plain) {
+        try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] out = md.digest(raw.getBytes("UTF-8"));
-            StringBuilder sb = new StringBuilder(out.length*2);
-            for(byte b: out) sb.append(String.format("%02x", b));
+            byte[] b = md.digest(plain.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder sb = new StringBuilder(b.length * 2);
+            for (byte x : b) sb.append(String.format("%02X", x));
             return sb.toString();
-        }catch(Exception e){ throw new RuntimeException(e); }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
-    public static boolean matches(String raw, String storedHex){
-        if(storedHex==null) return false;
-        return storedHex.equalsIgnoreCase(toSha256Hex(raw));
+
+    public static boolean verify(String plain, String hexHash) {
+        if (plain == null || hexHash == null) return false;
+        return sha256Hex(plain).equalsIgnoreCase(hexHash);
     }
 }

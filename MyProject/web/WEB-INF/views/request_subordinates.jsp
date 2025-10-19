@@ -4,7 +4,7 @@
     Author     : Admin
 --%>
 <%@ page contentType="text/html; charset=UTF-8" %>
-<%@ page import="java.util.*, java.time.*, model.Request, model.User, model.Role, model.Feature" %>
+<%@ page import="java.util.*, model.Request, model.User, model.Role, model.Feature" %>
 <!DOCTYPE html>
 <html>
 <head>
@@ -14,12 +14,12 @@
     body { font-family: Arial, sans-serif; }
     h2 { margin-bottom: 8px; }
     .nav a { margin-right: 14px; }
-    table { border-collapse: collapse; margin-top: 10px; }
-    th, td { border: 1px solid #aaa; padding: 6px 10px; }
+    table { border-collapse: collapse; margin-top: 10px; width: 100%; }
+    th, td { border: 1px solid #aaa; padding: 6px 10px; vertical-align: top; }
     .actions form { display:inline-block; margin-right:6px; }
     .status-approved { color: #2a7a2a; font-weight: bold; }
     .status-rejected { color: #b22; font-weight: bold; }
-    .status-inprogress { color: #aa7a00; font-weight: bold; }
+    .status-inprogress { color: #aa7a00; font-weight: bold; } /* dùng cho NEW */
     .note-input { width: 180px; }
     a { color:#1a66cc; text-decoration: underline; }
   </style>
@@ -75,27 +75,27 @@
          String createdName   = names.getOrDefault(r.getCreatedBy(), String.valueOf(r.getCreatedBy()));
          String processedName = (r.getProcessedBy()==null) ? ""
                                 : names.getOrDefault(r.getProcessedBy(), String.valueOf(r.getProcessedBy()));
+         String st = r.getStatus().name(); // NEW / APPROVED / REJECTED
     %>
       <tr>
-       <td>
-  <a href="${pageContext.request.contextPath}/requestdetailservlet1?id=<%= r.getId() %>">
-    <%= r.getTitle() %>
-  </a>
-</td>
+        <td>
+          <a href="${pageContext.request.contextPath}/requestdetailservlet1?id=<%= r.getId() %>">
+            <%= r.getTitle() %>
+          </a>
+        </td>
         <td><%= r.getFrom() %></td>
         <td><%= r.getTo() %></td>
         <td><%= createdName %></td>
-        <td class="<%= 
-              r.getStatus().name().equals("APPROVED") ? "status-approved" :
-              r.getStatus().name().equals("REJECTED") ? "status-rejected" :
-              "status-inprogress" %>">
-          <%= r.getStatus() %>
+        <td class="<%= "APPROVED".equals(st) ? "status-approved" :
+                       "REJECTED".equals(st) ? "status-rejected" :
+                       "status-inprogress" %>">
+          <%= st %>
         </td>
         <td><%= processedName %></td>
         <td><%= r.getProcessedNote()==null ? "" : r.getProcessedNote() %></td>
 
         <td class="actions">
-          <% if ("IN_PROGRESS".equals(r.getStatus().name())) { %>
+          <% if ("NEW".equals(st)) { %>
             <form method="post" action="${pageContext.request.contextPath}/requestapproveservlet1">
               <input type="hidden" name="id" value="<%= r.getId() %>"/>
               <input class="note-input" name="note" placeholder="Ghi chú phê duyệt"/>

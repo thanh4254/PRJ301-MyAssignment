@@ -3,16 +3,9 @@ package dal;
 import model.Request;
 import model.RequestStatus;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
-import java.sql.Timestamp;
-import java.sql.Types;
+import java.sql.*;
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 
 public class RequestDAO {
 
@@ -24,7 +17,7 @@ public class RequestDAO {
         r.setTo(rs.getDate("DateTo").toLocalDate());
         r.setReason(rs.getNString("Reason"));
         r.setCreatedBy(rs.getInt("CreatedBy"));
-        r.setStatus(RequestStatus.valueOf(rs.getString("Status")));
+        r.setStatus(RequestStatus.fromDbString(rs.getString("Status")));
         int p = rs.getInt("ProcessedBy");
         r.setProcessedBy(rs.wasNull() ? null : p);
         r.setProcessedNote(rs.getNString("ProcessedNote"));
@@ -34,11 +27,13 @@ public class RequestDAO {
         return r;
     }
 
+    /** Có đơn APPROVED nào giao nhau với [from, to] của chính user? */
     public boolean existsApprovedOverlap(int userId, LocalDate from, LocalDate to) throws Exception {
-        String sql =
-            "SELECT 1 FROM [Request] " +
-            "WHERE CreatedBy=? AND Status='APPROVED' " +
-            "  AND NOT (DateTo < ? OR DateFrom > ?)";
+        String sql = """
+           SELECT 1 FROM [Request]
+           WHERE CreatedBy=? AND Status='APPROVED'
+             AND NOT (DateTo < ? OR DateFrom > ?)
+        """;
         try (Connection c = DBContext.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setInt(1, userId);
@@ -50,11 +45,13 @@ public class RequestDAO {
         }
     }
 
+    /** Thêm đơn mới, trả về ID */
     public int insert(Request r) throws Exception {
-        String sql =
-            "INSERT INTO [Request](Title,DateFrom,DateTo,Reason,CreatedBy,Status,CreatedAt,UpdatedAt) " +
-            "VALUES(?,?,?,?,?, ?, SYSDATETIME(), SYSDATETIME()); " +
-            "SELECT SCOPE_IDENTITY();";
+        String sql = """
+          INSERT INTO [Request](Title,DateFrom,DateTo,Reason,CreatedBy,Status,CreatedAt,UpdatedAt)
+          VALUES(?,?,?,?,?, ?, SYSDATETIME(), SYSDATETIME());
+          SELECT SCOPE_IDENTITY();
+        """;
         try (Connection c = DBContext.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setNString(1, r.getTitle());
@@ -62,7 +59,7 @@ public class RequestDAO {
             ps.setDate(3, java.sql.Date.valueOf(r.getTo()));
             ps.setNString(4, r.getReason());
             ps.setInt(5, r.getCreatedBy());
-            ps.setString(6, r.getStatus().name());
+            ps.setString(6, r.getStatus().toDbString());
             try (ResultSet rs = ps.executeQuery()) {
                 rs.next();
                 return rs.getInt(1);
@@ -85,7 +82,7 @@ public class RequestDAO {
         String sql = "UPDATE [Request] SET Status=?,ProcessedBy=?,ProcessedNote=?,UpdatedAt=SYSDATETIME() WHERE RequestID=?";
         try (Connection c = DBContext.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setString(1, st.name());
+            ps.setString(1, st.toDbString());
             if (processedBy == null) ps.setNull(2, Types.INTEGER); else ps.setInt(2, processedBy);
             if (note == null) ps.setNull(3, Types.NVARCHAR); else ps.setNString(3, note);
             ps.setInt(4, requestId);
@@ -107,7 +104,7 @@ public class RequestDAO {
     }
 
     public List<Request> listByCreators(List<Integer> creatorIds) throws Exception {
-        if (creatorIds.isEmpty()) return Collections.emptyList();
+        if (creatorIds == null || creatorIds.isEmpty()) return List.of();
         String placeholders = String.join(",", Collections.nCopies(creatorIds.size(), "?"));
         String sql = "SELECT * FROM [Request] WHERE CreatedBy IN (" + placeholders + ") ORDER BY CreatedAt DESC";
         List<Request> list = new ArrayList<>();
@@ -121,18 +118,18 @@ public class RequestDAO {
         return list;
     }
 
-    // === Agenda: các đơn APPROVED giao với khoảng ngày cho danh sách user ===
-    public List<Request> listApprovedByCreatorsInRange(List<Integer> creatorIds,
-                                                       LocalDate from,
-                                                       LocalDate to) throws Exception {
-        if (creatorIds == null || creatorIds.isEmpty()) return Collections.emptyList();
+    /** Các đơn APPROVED của 1 tập người trong khoảng ngày (phục vụ Agenda) */
+    public List<Request> listApprovedByCreatorsInRange(List<Integer> creatorIds, LocalDate from, LocalDate to) throws Exception {
+        if (creatorIds == null || creatorIds.isEmpty()) return List.of();
         String placeholders = String.join(",", Collections.nCopies(creatorIds.size(), "?"));
-        String sql =
-            "SELECT * FROM [Request] " +
-            "WHERE Status='APPROVED' " +
-            "  AND CreatedBy IN (" + placeholders + ") " +
-            "  AND NOT (DateTo < ? OR DateFrom > ?) " +
-            "ORDER BY CreatedBy";
+        String sql = """
+            SELECT * FROM [Request]
+            WHERE Status='APPROVED'
+              AND CreatedBy IN (""" + placeholders + """
+              )
+              AND NOT (DateTo < ? OR DateFrom > ?)
+            ORDER BY CreatedBy, DateFrom
+        """;
         List<Request> list = new ArrayList<>();
         try (Connection c = DBContext.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {

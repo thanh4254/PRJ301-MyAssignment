@@ -1,112 +1,43 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/JSP_Servlet/Servlet.java to edit this template
- */
-
 package controller;
-import dal.UserDAO;
-import java.io.IOException;
-import java.io.PrintWriter;
-import jakarta.servlet.ServletException;
-import jakarta.servlet.annotation.WebServlet;
-import jakarta.servlet.http.HttpServlet;
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
+
+import dal.EmployeeDAO;
+import dal.PermissionUtil;
 import dal.RequestDAO;
 import dal.UserDAO;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.*;
 import java.io.IOException;
-import java.util.List;
+import java.util.*;
+import model.Request;
 import model.User;
-/**
- *
- * @author Admin
- */
+
 @WebServlet(name="RequestSubordinatesServlet1", urlPatterns={"/requestsubordinatesservlet1"})
 public class RequestSubordinatesServlet1 extends HttpServlet {
-     private final RequestDAO requestDAO = new RequestDAO();
-    private final UserDAO userDAO = new UserDAO();
-    /** 
-     * Processes requests for both HTTP <code>GET</code> and <code>POST</code> methods.
-     * @param request servlet request
-     * @param response servlet response
-     * @throws ServletException if a servlet-specific error occurs
-     * @throws IOException if an I/O error occurs
-     */
-    protected void processRequest(HttpServletRequest request, HttpServletResponse response)
-    throws ServletException, IOException {
-        response.setContentType("text/html;charset=UTF-8");
-        try (PrintWriter out = response.getWriter()) {
-            /* TODO output your page here. You may use following sample code. */
-            out.println("<!DOCTYPE html>");
-            out.println("<html>");
-            out.println("<head>");
-            out.println("<title>Servlet RequestSubordinatesServlet1</title>");  
-            out.println("</head>");
-            out.println("<body>");
-            out.println("<h1>Servlet RequestSubordinatesServlet1 at " + request.getContextPath () + "</h1>");
-            out.println("</body>");
-            out.println("</html>");
-        }
-    } 
+  private final EmployeeDAO employeeDAO = new EmployeeDAO();
+  private final RequestDAO  requestDAO  = new RequestDAO();
+  private final UserDAO     userDAO     = new UserDAO();
 
-    // <editor-fold defaultstate="collapsed" desc="HttpServlet methods. Click on the + sign on the left to edit the code.">
-    /** 
-     * Handles the HTTP <code>GET</code> method.
-     * @param req
-     * @param resp
-     * @param request servlet request
-     * @param response servlet response
-     * @throws ServletException if a servlet-specific error occurs
-     * @throws IOException if an I/O error occurs
-     */
-    @Override
-    protected void doGet(HttpServletRequest req, HttpServletResponse resp)
-    throws ServletException, IOException {
-       User viewer = (User) req.getSession().getAttribute("user");
-    if (viewer==null){ resp.sendRedirect(req.getContextPath()+"/loginservlet1"); return; }
-
-    try {
-        boolean isHead = userDAO.isDepartmentHead(viewer.getId(), viewer.getDepartmentId());
-        java.util.List<Integer> targetIds = isHead
-            ? userDAO.findIdsInDepartment(viewer.getDepartmentId())
-            : userDAO.findSubordinateIds(viewer.getId());
-
-        java.util.List<model.Request> items = new dal.RequestDAO().listByCreators(targetIds);
-
-        java.util.Set<Integer> ids = new java.util.HashSet<>(targetIds); // createdBy
-        for (model.Request r : items) if (r.getProcessedBy()!=null) ids.add(r.getProcessedBy());
-        java.util.Map<Integer,String> names = userDAO.getFullNamesByIds(ids);
-
-        req.setAttribute("items", items);
-        req.setAttribute("names", names);
-    } catch (Exception e) { throw new ServletException(e); }
-
-    req.getRequestDispatcher("/WEB-INF/views/request_subordinates.jsp").forward(req, resp);
-    } 
-
-    /** 
-     * Handles the HTTP <code>POST</code> method.
-     * @param request servlet request
-     * @param response servlet response
-     * @throws ServletException if a servlet-specific error occurs
-     * @throws IOException if an I/O error occurs
-     */
-    @Override
-    protected void doPost(HttpServletRequest request, HttpServletResponse response)
-    throws ServletException, IOException {
-        processRequest(request, response);
+  @Override protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+      throws ServletException, IOException {
+    User me = (User) req.getSession().getAttribute("user");
+    if (me == null) { resp.sendRedirect(req.getContextPath()+"/loginservlet1"); return; }
+    if (!PermissionUtil.hasFeatureCode(me, "REQ_MGR")) {
+      req.setAttribute("error", "Bạn không có quyền xem đơn cấp dưới.");
+      req.getRequestDispatcher("/WEB-INF/views/error.jsp").forward(req, resp); return;
     }
+    try {
+      // uids cấp dưới trực tiếp theo VIEW Employee/Enrollment
+      List<Integer> subUids = employeeDAO.findSubordinateUserIds(me.getId());
+      var items = requestDAO.listByCreators(subUids);
 
-    /** 
-     * Returns a short description of the servlet.
-     * @return a String containing servlet description
-     */
-    @Override
-    public String getServletInfo() {
-        return "Short description";
-    }// </editor-fold>
+      Set<Integer> ids = new HashSet<>(subUids);
+      for (Request r : items) if (r.getProcessedBy()!=null) ids.add(r.getProcessedBy());
+      Map<Integer,String> names = userDAO.getFullNamesByIds(ids);
 
+      req.setAttribute("items", items);
+      req.setAttribute("names", names);
+      req.getRequestDispatcher("/WEB-INF/views/request_subordinates.jsp").forward(req, resp);
+    } catch (Exception e) { throw new ServletException(e); }
+  }
 }
