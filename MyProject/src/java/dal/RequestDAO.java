@@ -3,63 +3,62 @@ package dal;
 import model.Request;
 import model.RequestStatus;
 
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.Date;        // java.sql.Date
 import java.time.LocalDate;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 public class RequestDAO {
 
-    private Request map(ResultSet rs) throws SQLException {
+    private Request mapRow(ResultSet rs) throws Exception {
         Request r = new Request();
         r.setId(rs.getInt("RequestID"));
-        r.setTitle(rs.getNString("Title"));
-        r.setFrom(rs.getDate("DateFrom").toLocalDate());
-        r.setTo(rs.getDate("DateTo").toLocalDate());
-        r.setReason(rs.getNString("Reason"));
+        r.setTitle(rs.getString("Title"));
+        Date df = rs.getDate("DateFrom");
+        Date dt = rs.getDate("DateTo");
+        r.setFrom(df == null ? null : df.toLocalDate());
+        r.setTo(dt == null ? null : dt.toLocalDate());
+        r.setReason(rs.getString("Reason"));
         r.setCreatedBy(rs.getInt("CreatedBy"));
-        r.setStatus(RequestStatus.fromDbString(rs.getString("Status")));
-        int p = rs.getInt("ProcessedBy");
-        r.setProcessedBy(rs.wasNull() ? null : p);
-        r.setProcessedNote(rs.getNString("ProcessedNote"));
-        Timestamp ca = rs.getTimestamp("CreatedAt"), ua = rs.getTimestamp("UpdatedAt");
-        r.setCreatedAt(ca == null ? null : ca.toLocalDateTime());
-        r.setUpdatedAt(ua == null ? null : ua.toLocalDateTime());
+        int pby = rs.getInt("ProcessedBy");
+        r.setProcessedBy(rs.wasNull() ? null : pby);
+        r.setProcessedNote(rs.getString("ProcessedNote"));
+        r.setStatus(RequestStatus.valueOf(rs.getString("Status")));
         return r;
     }
 
-    /** Có đơn APPROVED nào giao nhau với [from, to] của chính user? */
-    public boolean existsApprovedOverlap(int userId, LocalDate from, LocalDate to) throws Exception {
-        String sql = """
-           SELECT 1 FROM [Request]
-           WHERE CreatedBy=? AND Status='APPROVED'
-             AND NOT (DateTo < ? OR DateFrom > ?)
-        """;
+    public Request findById(int id) throws Exception {
+        String sql =
+            "SELECT RequestID, Title, DateFrom, DateTo, Reason, CreatedBy, " +
+            "       Status, ProcessedBy, ProcessedNote, CreatedAt, UpdatedAt " +
+            "FROM Request WHERE RequestID=?";
         try (Connection c = DBContext.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setInt(1, userId);
-            ps.setDate(2, java.sql.Date.valueOf(from));
-            ps.setDate(3, java.sql.Date.valueOf(to));
+            ps.setInt(1, id);
             try (ResultSet rs = ps.executeQuery()) {
-                return rs.next();
+                return rs.next() ? mapRow(rs) : null;
             }
         }
     }
 
-    /** Thêm đơn mới, trả về ID */
-    public int insert(Request r) throws Exception {
-        String sql = """
-          INSERT INTO [Request](Title,DateFrom,DateTo,Reason,CreatedBy,Status,CreatedAt,UpdatedAt)
-          VALUES(?,?,?,?,?, ?, SYSDATETIME(), SYSDATETIME());
-          SELECT SCOPE_IDENTITY();
-        """;
+    /** Tạo mới: Reason = lý do xin nghỉ của nhân viên */
+    public int create(int createdBy, LocalDate from, LocalDate to,
+                      String title, String reason) throws Exception {
+        String sql =
+            "INSERT INTO Request(Title, DateFrom, DateTo, Reason, CreatedBy, Status, CreatedAt, UpdatedAt) " +
+            "VALUES(?, ?, ?, ?, ?, 'NEW', GETDATE(), GETDATE()); " +
+            "SELECT SCOPE_IDENTITY();";
         try (Connection c = DBContext.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setNString(1, r.getTitle());
-            ps.setDate(2, java.sql.Date.valueOf(r.getFrom()));
-            ps.setDate(3, java.sql.Date.valueOf(r.getTo()));
-            ps.setNString(4, r.getReason());
-            ps.setInt(5, r.getCreatedBy());
-            ps.setString(6, r.getStatus().toDbString());
+            ps.setString(1, title);
+            ps.setDate(2, Date.valueOf(from));
+            ps.setDate(3, Date.valueOf(to));
+            ps.setString(4, reason);
+            ps.setInt(5, createdBy);
             try (ResultSet rs = ps.executeQuery()) {
                 rs.next();
                 return rs.getInt(1);
@@ -67,80 +66,94 @@ public class RequestDAO {
         }
     }
 
-    public Request findById(int id) throws Exception {
-        String sql = "SELECT * FROM [Request] WHERE RequestID=?";
+    /** Cập nhật trạng thái + phản hồi của cấp trên vào ProcessedNote */
+    public void updateStatus(int id, RequestStatus status, int processedBy, String note) throws Exception {
+        String sql =
+            "UPDATE Request " +
+            "   SET Status=?, " +
+            "       ProcessedBy=?, " +
+            "       ProcessedNote=?, " +
+            "       UpdatedAt=GETDATE() " +
+            " WHERE RequestID=?";
         try (Connection c = DBContext.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setInt(1, id);
-            try (ResultSet rs = ps.executeQuery()) {
-                return rs.next() ? map(rs) : null;
-            }
-        }
-    }
-
-    public void updateStatus(int requestId, RequestStatus st, Integer processedBy, String note) throws Exception {
-        String sql = "UPDATE [Request] SET Status=?,ProcessedBy=?,ProcessedNote=?,UpdatedAt=SYSDATETIME() WHERE RequestID=?";
-        try (Connection c = DBContext.getConnection();
-             PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setString(1, st.toDbString());
-            if (processedBy == null) ps.setNull(2, Types.INTEGER); else ps.setInt(2, processedBy);
-            if (note == null) ps.setNull(3, Types.NVARCHAR); else ps.setNString(3, note);
-            ps.setInt(4, requestId);
+            ps.setString(1, status.name());
+            ps.setInt(2, processedBy);
+            ps.setString(3, note);
+            ps.setInt(4, id);
             ps.executeUpdate();
         }
     }
 
-    public List<Request> listMine(int userId) throws Exception {
-        String sql = "SELECT * FROM [Request] WHERE CreatedBy=? ORDER BY CreatedAt DESC";
-        List<Request> list = new ArrayList<>();
+    /** Danh sách theo nhiều người tạo */
+    public List<Request> listByCreators(List<Integer> uids) throws Exception {
+        if (uids == null || uids.isEmpty()) return Collections.emptyList();
+        String placeholders = String.join(",", Collections.nCopies(uids.size(), "?"));
+        String sql =
+            "SELECT RequestID, Title, DateFrom, DateTo, Reason, CreatedBy, " +
+            "       Status, ProcessedBy, ProcessedNote, CreatedAt, UpdatedAt " +
+            "FROM Request " +
+            "WHERE CreatedBy IN (" + placeholders + ") " +
+            "ORDER BY DateFrom DESC, RequestID DESC";
         try (Connection c = DBContext.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setInt(1, userId);
+            int i = 1;
+            for (Integer uid : uids) ps.setInt(i++, uid);
             try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) list.add(map(rs));
+                List<Request> list = new ArrayList<>();
+                while (rs.next()) list.add(mapRow(rs));
+                return list;
             }
         }
-        return list;
     }
 
-    public List<Request> listByCreators(List<Integer> creatorIds) throws Exception {
-        if (creatorIds == null || creatorIds.isEmpty()) return List.of();
-        String placeholders = String.join(",", Collections.nCopies(creatorIds.size(), "?"));
-        String sql = "SELECT * FROM [Request] WHERE CreatedBy IN (" + placeholders + ") ORDER BY CreatedAt DESC";
-        List<Request> list = new ArrayList<>();
+    /** Danh sách theo 1 người tạo (dùng cho “Đơn của tôi”) */
+    public List<Request> listByCreator(int uid) throws Exception {
+        String sql =
+            "SELECT RequestID, Title, DateFrom, DateTo, Reason, CreatedBy, " +
+            "       Status, ProcessedBy, ProcessedNote, CreatedAt, UpdatedAt " +
+            "FROM Request " +
+            "WHERE CreatedBy=? " +
+            "ORDER BY DateFrom DESC, RequestID DESC";
         try (Connection c = DBContext.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
-            for (int i = 0; i < creatorIds.size(); i++) ps.setInt(i + 1, creatorIds.get(i));
+            ps.setInt(1, uid);
             try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) list.add(map(rs));
+                List<Request> list = new ArrayList<>();
+                while (rs.next()) list.add(mapRow(rs));
+                return list;
             }
         }
-        return list;
     }
 
-    /** Các đơn APPROVED của 1 tập người trong khoảng ngày (phục vụ Agenda) */
-    public List<Request> listApprovedByCreatorsInRange(List<Integer> creatorIds, LocalDate from, LocalDate to) throws Exception {
-        if (creatorIds == null || creatorIds.isEmpty()) return List.of();
-        String placeholders = String.join(",", Collections.nCopies(creatorIds.size(), "?"));
-        String sql = """
-            SELECT * FROM [Request]
-            WHERE Status='APPROVED'
-              AND CreatedBy IN (""" + placeholders + """
-              )
-              AND NOT (DateTo < ? OR DateFrom > ?)
-            ORDER BY CreatedBy, DateFrom
-        """;
-        List<Request> list = new ArrayList<>();
+    /** Phục vụ Agenda: lấy đã APPROVED và giao với khoảng ngày [from..to] */
+    public List<Request> listApprovedByCreatorsInRange(List<Integer> uids,
+                                                       LocalDate from, LocalDate to) throws Exception {
+        if (uids == null || uids.isEmpty()) return Collections.emptyList();
+        String placeholders = String.join(",", Collections.nCopies(uids.size(), "?"));
+        String sql =
+            "SELECT RequestID, Title, DateFrom, DateTo, Reason, CreatedBy, " +
+            "       Status, ProcessedBy, ProcessedNote, CreatedAt, UpdatedAt " +
+            "FROM Request " +
+            "WHERE Status='APPROVED' " +
+            "  AND CreatedBy IN (" + placeholders + ") " +
+            "  AND NOT (DateTo < ? OR DateFrom > ?)";
         try (Connection c = DBContext.getConnection();
              PreparedStatement ps = c.prepareStatement(sql)) {
-            int idx = 1;
-            for (Integer id : creatorIds) ps.setInt(idx++, id);
-            ps.setDate(idx++, java.sql.Date.valueOf(from));
-            ps.setDate(idx,   java.sql.Date.valueOf(to));
+            int i = 1;
+            for (Integer uid : uids) ps.setInt(i++, uid);
+            ps.setDate(i++, Date.valueOf(from));
+            ps.setDate(i,   Date.valueOf(to));
             try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) list.add(map(rs));
+                List<Request> list = new ArrayList<>();
+                while (rs.next()) list.add(mapRow(rs));
+                return list;
             }
         }
-        return list;
+    }
+
+    /** Alias tiện cho servlet “Đơn của tôi” */
+    public List<Request> listMine(int uid) throws Exception {
+        return listByCreator(uid);
     }
 }

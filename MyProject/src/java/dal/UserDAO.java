@@ -169,4 +169,15 @@ public class UserDAO {
         if (u == null || u.getRoles() == null || u.getRoles().isEmpty()) return "—";
         return u.getRoles().iterator().next().getName();
     }
+    public String getDepartmentNameById(Integer depId) throws Exception {
+  if (depId == null) return null;
+  String sql = "SELECT Name FROM Department WHERE DepartmentID = ?";
+  try (Connection c = DBContext.getConnection();
+       PreparedStatement ps = c.prepareStatement(sql)) {
+    ps.setInt(1, depId);
+    try (ResultSet rs = ps.executeQuery()) {
+      return rs.next() ? rs.getString(1) : null;
+    }
+  }
+}
 }
