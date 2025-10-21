@@ -296,3 +296,5 @@ WHERE u.Username IN ('bob','ryder','laura','clause','michel')
 ORDER BY u.Username;
 
 SELECT * FROM [User] WHERE Username = 'alice' AND IsActive = 1;
+
+SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='Request';

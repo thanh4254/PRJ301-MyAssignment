@@ -4,7 +4,7 @@
     Author     : Admin
 --%>
 <%@ page contentType="text/html; charset=UTF-8" %>
-<%@ page import="java.util.*, model.Request" %>
+<%@ page import="java.util.*, model.Request, model.RequestStatus" %>
 <%
   String ctx = request.getContextPath();
 
@@ -75,19 +75,16 @@
     .actions{display:flex; gap:8px; flex-wrap:wrap; margin-top:8px}
     .btn-approve{background:#16a34a; color:#fff}
     .btn-reject{background:#dc2626; color:#fff}
-    .btn-approve,.btn-reject{ border:0; border-radius:10px; padding:10px 14px; font-weight:800; cursor:pointer; box-shadow:0 6px 12px rgba(0,0,0,.18); }
+    .btn-approve,.btn-reject{
+      border:0; border-radius:10px; padding:10px 14px; font-weight:800; cursor:pointer;
+      box-shadow:0 6px 12px rgba(0,0,0,.18);
+    }
 
     /* Status colors */
     .status-cell{ font-weight:800; white-space:nowrap; }
-    .status-new{  color:#d97706; } /* In-progress */
-    .status-ok{   color:#16a34a; } /* Approved    */
-    .status-bad{  color:#dc2626; } /* Rejected    */
-    .tbl td.status-cell{ font-weight:800; white-space:nowrap; }
-
-/* dùng !important để thắng các rule nền có thể đang áp màu chữ */
-.tbl td.status-new{  color:#d97706 !important; } /* In-progress */
-.tbl td.status-ok{   color:#16a34a !important; } /* Approved    */
-.tbl td.status-bad{  color:#dc2626 !important; } /* Rejected    */
+    .status-new{  color:#d97706 !important; } /* In-progress */
+    .status-ok{   color:#16a34a !important; } /* Approved    */
+    .status-bad{  color:#dc2626 !important; } /* Rejected    */
   </style>
 </head>
 <body>
@@ -134,6 +131,8 @@
                 case "REJECTED": statusLabel = "Rejected";    statusClass = "status-cell status-bad"; break;
                 default:         statusLabel = raw;           statusClass = "status-cell";            break;
               }
+
+              boolean canAct = (r.getStatus() == RequestStatus.NEW);  // chỉ NEW mới thao tác
         %>
           <tr>
             <td>
@@ -145,19 +144,23 @@
             <td class="<%= statusClass %>"><%= statusLabel %></td>
             <td><%= processor %></td>
             <td>
-              <!-- APPROVE -->
-              <form method="post" action="<%=ctx%>/requestapproveservlet1">
-                <input type="hidden" name="id" value="<%= r.getId() %>">
-                <input class="note-input" name="note" placeholder="Ghi chú phê duyệt">
-                <button type="submit" class="btn-approve">Approve</button>
-              </form>
+              <% if (canAct) { %>
+                <!-- APPROVE -->
+                <form method="post" action="<%=ctx%>/requestapproveservlet1">
+                  <input type="hidden" name="id" value="<%= r.getId() %>">
+                  <input class="note-input" name="note" placeholder="Ghi chú phê duyệt">
+                  <button type="submit" class="btn-approve">Approve</button>
+                </form>
 
-              <!-- REJECT -->
-              <form method="post" action="<%=ctx%>/requestrejectservlet1" style="margin-top:8px">
-                <input type="hidden" name="id" value="<%= r.getId() %>">
-                <input class="note-input" name="note" placeholder="Lý do từ chối">
-                <button type="submit" class="btn-reject">Reject</button>
-              </form>
+                <!-- REJECT -->
+                <form method="post" action="<%=ctx%>/requestrejectservlet1" style="margin-top:8px">
+                  <input type="hidden" name="id" value="<%= r.getId() %>">
+                  <input class="note-input" name="note" placeholder="Lý do từ chối">
+                  <button type="submit" class="btn-reject">Reject</button>
+                </form>
+              <% } else { %>
+                <span style="opacity:.6">—</span>
+              <% } %>
             </td>
           </tr>
         <%
