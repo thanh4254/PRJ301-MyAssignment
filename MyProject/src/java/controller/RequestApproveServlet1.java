@@ -1,6 +1,6 @@
 package controller;
 
-import dal.EmployeeDAO;          // <-- thêm
+import dal.EmployeeDAO;
 import dal.HistoryDAO;
 import dal.PermissionUtil;
 import dal.RequestDAO;
@@ -22,66 +22,68 @@ public class RequestApproveServlet1 extends HttpServlet {
   private final RequestDAO  requestDAO = new RequestDAO();
   private final HistoryDAO  historyDAO = new HistoryDAO();
   private final UserDAO     userDAO    = new UserDAO();
-  private final EmployeeDAO empDAO     = new EmployeeDAO();   // <-- thêm
+  private final EmployeeDAO empDAO     = new EmployeeDAO();
 
-  @Override
-  protected void doPost(HttpServletRequest req, HttpServletResponse resp)
+  @Override protected void doPost(HttpServletRequest req, HttpServletResponse resp)
       throws ServletException, IOException {
 
     req.setCharacterEncoding("UTF-8");
-
     User me = (User) req.getSession().getAttribute("user");
     if (me == null) { resp.sendRedirect(req.getContextPath()+"/loginservlet1"); return; }
 
-    final String spath = req.getServletPath();
-    final boolean isApprove = "/requestapproveservlet1".equalsIgnoreCase(spath);
-    final RequestStatus target = isApprove ? RequestStatus.APPROVED : RequestStatus.REJECTED;
+    final String spath    = req.getServletPath();                // /requestapproveservlet1 | /requestrejectservlet1
+    final boolean approve = "/requestapproveservlet1".equalsIgnoreCase(spath);
+    final RequestStatus target = approve ? RequestStatus.APPROVED : RequestStatus.REJECTED;
+
+    final boolean isAjax = "XMLHttpRequest".equals(req.getHeader("X-Requested-With"))
+                        || "1".equals(req.getParameter("ajax"));
 
     try {
-      if (!PermissionUtil.hasFeatureCode(me, "REQ_APPROVE")) {
+      if (!PermissionUtil.hasFeatureCode(me, "REQ_APPROVE"))
         throw new SecurityException("Bạn không có quyền duyệt đơn.");
-      }
 
-      String idRaw = req.getParameter("id");
-      if (idRaw == null || idRaw.isBlank()) throw new IllegalArgumentException("Thiếu tham số id.");
-      int id = Integer.parseInt(idRaw.trim());
+      int id = Integer.parseInt(req.getParameter("id").trim());
       String note = req.getParameter("note");
       if (note != null) note = note.trim();
 
       Request r = requestDAO.findById(id);
       if (r == null) throw new IllegalArgumentException("Không tìm thấy đơn.");
 
-      // Chỉ cho xử lý khi là người có thẩm quyền (Head hoặc trong cây cấp dưới) và KHÔNG tự duyệt
-      if (!PermissionUtil.canProcess(me, r.getCreatedBy(), userDAO, empDAO)) {   // <-- sửa
+      // QUAN TRỌNG: đúng chữ ký (4 tham số)
+      if (!PermissionUtil.canProcess(me, r.getCreatedBy(), userDAO, empDAO))
         throw new SecurityException("Bạn không có quyền xử lý đơn này.");
-      }
 
-      // Chỉ xử lý khi đơn còn NEW (chưa xử lý)
-      RequestStatus oldStatus = r.getStatus();
-      if (oldStatus == RequestStatus.APPROVED
-          || oldStatus == RequestStatus.REJECTED
-          || oldStatus == RequestStatus.CANCELLED) {
-        throw new IllegalStateException("Đơn đã được xử lý trước đó.");
-      }
+      if (r.getStatus() == RequestStatus.CANCELLED)
+        throw new IllegalStateException("Đơn đã bị hủy.");
+      if (r.getStatus() == target)
+        throw new IllegalStateException("Đơn đã ở trạng thái " + target.name().toLowerCase() + ".");
 
       requestDAO.updateStatus(id, target, me.getId(), note);
-      historyDAO.add(id, me.getId(), oldStatus, target, note);
+      historyDAO.add(id, me.getId(), r.getStatus(), target, note);
+
+      if (isAjax) {
+        resp.setContentType("application/json; charset=UTF-8");
+        String pName = userDAO.getFullNamesByIds(java.util.Set.of(me.getId())).get(me.getId());
+        if (pName == null) pName = me.getUsername();
+        String json = "{\"ok\":true"
+                      +",\"id\":"+id
+                      +",\"status\":\""+target.name()+"\""
+                      +",\"processorName\":\""+pName.replace("\"","\\\"")+"\"}";
+        resp.getWriter().write(json);
+        return;
+      }
 
       resp.sendRedirect(req.getContextPath()+"/requestsubordinatesservlet1");
 
-    } catch (NumberFormatException nfe) {
-      forwardError(req, resp, "Mã đơn không hợp lệ.");
-    } catch (SecurityException | IllegalArgumentException | IllegalStateException ex) {
-      forwardError(req, resp, ex.getMessage());
     } catch (Exception ex) {
-      ex.printStackTrace();
-      forwardError(req, resp, "Có lỗi xảy ra khi xử lý: " + ex.getMessage());
+      if (isAjax) {
+        resp.setStatus(400);
+        resp.setContentType("application/json; charset=UTF-8");
+        resp.getWriter().write("{\"ok\":false,\"message\":\""+ex.getMessage().replace("\"","\\\"")+"\"}");
+      } else {
+        req.setAttribute("error", ex.getMessage());
+        req.getRequestDispatcher("/WEB-INF/views/error.jsp").forward(req, resp);
+      }
     }
-  }
-
-  private void forwardError(HttpServletRequest req, HttpServletResponse resp, String msg)
-      throws ServletException, IOException {
-    req.setAttribute("error", msg);
-    req.getRequestDispatcher("/WEB-INF/views/error.jsp").forward(req, resp);
   }
 }
