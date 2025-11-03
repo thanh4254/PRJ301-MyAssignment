@@ -298,3 +298,106 @@ ORDER BY u.Username;
 SELECT * FROM [User] WHERE Username = 'alice' AND IsActive = 1;
 
 SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='Request';
+
+/* =======================
+   THÊM NHÂN SỰ CHO QA & SALE
+   ======================= */
+
+-- ===== QA =====
+-- Trưởng phòng QA
+INSERT INTO [User](Username,PasswordHash,FullName,Email,DepartmentID,ManagerUserID,IsActive) VALUES
+('quinn', CONVERT(VARCHAR(200), HASHBYTES('SHA2_256','123456'),2), N'Quinn (Head QA)', 'quinn@company.com',
+ (SELECT DepartmentID FROM Department WHERE Name=N'QA'), NULL, 1);
+
+-- Hai team lead dưới QA Head
+INSERT INTO [User](Username,PasswordHash,FullName,Email,DepartmentID,ManagerUserID,IsActive) VALUES
+('tina',  CONVERT(VARCHAR(200), HASHBYTES('SHA2_256','123456'),2), N'Tina (Team Lead)',  'tina@company.com',
+ (SELECT DepartmentID FROM Department WHERE Name=N'QA'), (SELECT UserID FROM [User] WHERE Username='quinn'), 1),
+('tony',  CONVERT(VARCHAR(200), HASHBYTES('SHA2_256','123456'),2), N'Tony (Team Lead)',  'tony@company.com',
+ (SELECT DepartmentID FROM Department WHERE Name=N'QA'), (SELECT UserID FROM [User] WHERE Username='quinn'), 1);
+
+-- Mỗi team lead có 3 nhân viên
+INSERT INTO [User](Username,PasswordHash,FullName,Email,DepartmentID,ManagerUserID,IsActive) VALUES
+('ivy',   CONVERT(VARCHAR(200), HASHBYTES('SHA2_256','123456'),2), N'Ivy',   'ivy@company.com',
+ (SELECT DepartmentID FROM Department WHERE Name=N'QA'), (SELECT UserID FROM [User] WHERE Username='tina'), 1),
+('jack',  CONVERT(VARCHAR(200), HASHBYTES('SHA2_256','123456'),2), N'Jack',  'jack@company.com',
+ (SELECT DepartmentID FROM Department WHERE Name=N'QA'), (SELECT UserID FROM [User] WHERE Username='tina'), 1),
+('kate',  CONVERT(VARCHAR(200), HASHBYTES('SHA2_256','123456'),2), N'Kate',  'kate@company.com',
+ (SELECT DepartmentID FROM Department WHERE Name=N'QA'), (SELECT UserID FROM [User] WHERE Username='tina'), 1),
+('liam',  CONVERT(VARCHAR(200), HASHBYTES('SHA2_256','123456'),2), N'Liam',  'liam@company.com',
+ (SELECT DepartmentID FROM Department WHERE Name=N'QA'), (SELECT UserID FROM [User] WHERE Username='tony'), 1),
+('maya',  CONVERT(VARCHAR(200), HASHBYTES('SHA2_256','123456'),2), N'Maya',  'maya@company.com',
+ (SELECT DepartmentID FROM Department WHERE Name=N'QA'), (SELECT UserID FROM [User] WHERE Username='tony'), 1),
+('nate',  CONVERT(VARCHAR(200), HASHBYTES('SHA2_256','123456'),2), N'Nate',  'nate@company.com',
+ (SELECT DepartmentID FROM Department WHERE Name=N'QA'), (SELECT UserID FROM [User] WHERE Username='tony'), 1);
+
+-- Gán head cho Department QA
+UPDATE d SET ManagerUserID = (SELECT UserID FROM [User] WHERE Username='quinn')
+FROM Department d WHERE d.Name=N'QA';
+
+-- Role cho QA
+INSERT INTO UserRole(UserID, RoleID)
+SELECT u.UserID, r.RoleID FROM [User] u JOIN Role r ON r.Code='DIV_LEADER' WHERE u.Username='quinn';
+INSERT INTO UserRole(UserID, RoleID)
+SELECT u.UserID, r.RoleID FROM [User] u JOIN Role r ON r.Code='TEAM_LEAD'  WHERE u.Username IN ('tina','tony');
+INSERT INTO UserRole(UserID, RoleID)
+SELECT u.UserID, r.RoleID FROM [User] u JOIN Role r ON r.Code='EMP'
+WHERE u.Username IN ('ivy','jack','kate','liam','maya','nate');
+
+
+
+-- ===== SALE =====
+-- Trưởng phòng Sale
+INSERT INTO [User](Username,PasswordHash,FullName,Email,DepartmentID,ManagerUserID,IsActive) VALUES
+('sara', CONVERT(VARCHAR(200), HASHBYTES('SHA2_256','123456'),2), N'Sara (Head Sale)', 'sara@company.com',
+ (SELECT DepartmentID FROM Department WHERE Name=N'Sale'), NULL, 1);
+
+-- Hai team lead dưới Sale Head
+INSERT INTO [User](Username,PasswordHash,FullName,Email,DepartmentID,ManagerUserID,IsActive) VALUES
+('sally', CONVERT(VARCHAR(200), HASHBYTES('SHA2_256','123456'),2), N'Sally (Team Lead)', 'sally@company.com',
+ (SELECT DepartmentID FROM Department WHERE Name=N'Sale'), (SELECT UserID FROM [User] WHERE Username='sara'), 1),
+('steve', CONVERT(VARCHAR(200), HASHBYTES('SHA2_256','123456'),2), N'Steve (Team Lead)', 'steve@company.com',
+ (SELECT DepartmentID FROM Department WHERE Name=N'Sale'), (SELECT UserID FROM [User] WHERE Username='sara'), 1);
+
+-- Mỗi team lead có 3 nhân viên
+INSERT INTO [User](Username,PasswordHash,FullName,Email,DepartmentID,ManagerUserID,IsActive) VALUES
+('owen',   CONVERT(VARCHAR(200), HASHBYTES('SHA2_256','123456'),2), N'Owen',   'owen@company.com',
+ (SELECT DepartmentID FROM Department WHERE Name=N'Sale'), (SELECT UserID FROM [User] WHERE Username='sally'), 1),
+('peter',  CONVERT(VARCHAR(200), HASHBYTES('SHA2_256','123456'),2), N'Peter',  'peter@company.com',
+ (SELECT DepartmentID FROM Department WHERE Name=N'Sale'), (SELECT UserID FROM [User] WHERE Username='sally'), 1),
+('rachel', CONVERT(VARCHAR(200), HASHBYTES('SHA2_256','123456'),2), N'Rachel', 'rachel@company.com',
+ (SELECT DepartmentID FROM Department WHERE Name=N'Sale'), (SELECT UserID FROM [User] WHERE Username='sally'), 1),
+('tom',    CONVERT(VARCHAR(200), HASHBYTES('SHA2_256','123456'),2), N'Tom',    'tom@company.com',
+ (SELECT DepartmentID FROM Department WHERE Name=N'Sale'), (SELECT UserID FROM [User] WHERE Username='steve'), 1),
+('ursula', CONVERT(VARCHAR(200), HASHBYTES('SHA2_256','123456'),2), N'Ursula', 'ursula@company.com',
+ (SELECT DepartmentID FROM Department WHERE Name=N'Sale'), (SELECT UserID FROM [User] WHERE Username='steve'), 1),
+('victor', CONVERT(VARCHAR(200), HASHBYTES('SHA2_256','123456'),2), N'Victor', 'victor@company.com',
+ (SELECT DepartmentID FROM Department WHERE Name=N'Sale'), (SELECT UserID FROM [User] WHERE Username='steve'), 1);
+
+-- Gán head cho Department Sale
+UPDATE d SET ManagerUserID = (SELECT UserID FROM [User] WHERE Username='sara')
+FROM Department d WHERE d.Name=N'Sale';
+
+-- Role cho Sale
+INSERT INTO UserRole(UserID, RoleID)
+SELECT u.UserID, r.RoleID FROM [User] u JOIN Role r ON r.Code='DIV_LEADER' WHERE u.Username='sara';
+INSERT INTO UserRole(UserID, RoleID)
+SELECT u.UserID, r.RoleID FROM [User] u JOIN Role r ON r.Code='TEAM_LEAD'  WHERE u.Username IN ('sally','steve');
+INSERT INTO UserRole(UserID, RoleID)
+SELECT u.UserID, r.RoleID FROM [User] u JOIN Role r ON r.Code='EMP'
+WHERE u.Username IN ('owen','peter','rachel','tom','ursula','victor');
+
+SELECT u.Username, d.Name AS Dept, m.Username AS Manager
+FROM [User] u
+JOIN Department d ON d.DepartmentID=u.DepartmentID
+LEFT JOIN [User] m ON m.UserID=u.ManagerUserID
+WHERE d.Name IN (N'QA', N'Sale')
+ORDER BY d.Name, u.Username;
+
+SELECT u.Username, r.Code AS RoleCode
+FROM [User] u
+JOIN UserRole ur ON ur.UserID=u.UserID
+JOIN Role r ON r.RoleID=ur.RoleID
+WHERE u.Username IN ('quinn','tina','tony','ivy','jack','kate','liam','maya','nate',
+                      'sara','sally','steve','owen','peter','rachel','tom','ursula','victor')
+ORDER BY u.Username;
