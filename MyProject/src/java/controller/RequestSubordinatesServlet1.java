@@ -19,54 +19,44 @@ public class RequestSubordinatesServlet1 extends HttpServlet {
   private final RequestDAO  requestDAO  = new RequestDAO();
   private final UserDAO     userDAO     = new UserDAO();
 
-  @Override
-  protected void doGet(HttpServletRequest req, HttpServletResponse resp)
-      throws ServletException, IOException {
-    User me = (User) req.getSession().getAttribute("user");
-    if (me == null) { resp.sendRedirect(req.getContextPath()+"/loginservlet1"); return; }
+ @Override protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+    throws ServletException, IOException {
+  User me = (User) req.getSession().getAttribute("user");
+  if (me == null) { resp.sendRedirect(req.getContextPath()+"/loginservlet1"); return; }
 
-    // cần có 1 trong 2: REQ_MGR hoặc là Head
-    if (!PermissionUtil.hasFeatureCode(me, "REQ_MGR") && !PermissionUtil.isDepartmentHead(me)) {
-      req.setAttribute("items", List.of());
-      req.setAttribute("creatorNames", Map.of());
-      req.setAttribute("processorNames", Map.of());
-      req.setAttribute("error", "Bạn không có quyền xem đơn cấp dưới.");
-      req.getRequestDispatcher("/WEB-INF/views/request_subordinates.jsp").forward(req, resp);
-      return;
+  final int PAGE_SIZE = 5;
+  int page;
+  try { page = Math.max(1, Integer.parseInt(req.getParameter("page"))); }
+  catch (Exception ignore) { page = 1; }
+  int offset = (page - 1) * PAGE_SIZE;
+
+  try {
+    // toàn bộ cấp dưới (đệ quy)
+    java.util.List<Integer> creators = userDAO.getUserIdsByManager(me.getId());
+
+    var items = requestDAO.listByCreatorsPaged(creators, offset, PAGE_SIZE);
+    int total  = requestDAO.countByCreators(creators);
+    int totalPages = Math.max(1, (total + PAGE_SIZE - 1) / PAGE_SIZE);
+
+    // tên creator/processor
+    java.util.Set<Integer> cids = new java.util.HashSet<>();
+    java.util.Set<Integer> pids = new java.util.HashSet<>();
+    for (model.Request r : items) {
+      cids.add(r.getCreatedBy());
+      if (r.getProcessedBy()!=null) pids.add(r.getProcessedBy());
     }
+    var creatorNames   = userDAO.getFullNamesByIds(cids);
+    var processorNames = userDAO.getFullNamesByIds(pids);
 
-    try {
-      List<Integer> targetUids;
-      if (PermissionUtil.isDepartmentHead(me)) {
-        // Cara (Head): cả phòng
-        targetUids = employeeDAO.findDepartmentUserIds(me.getDepartmentId());
-      } else {
-        // Manager: toàn bộ cây cấp dưới
-        targetUids = employeeDAO.findAllReportUserIds(me.getId());
-      }
-      // không liệt kê chính mình
-      targetUids.removeIf(id -> id == me.getId());
+    req.setAttribute("items", items);
+    req.setAttribute("creatorNames", creatorNames);
+    req.setAttribute("processorNames", processorNames);
+    req.setAttribute("page", page);
+    req.setAttribute("totalPages", totalPages);
 
-      List<Request> items = targetUids.isEmpty() ? List.of() : requestDAO.listByCreators(targetUids);
-
-      // gom tên (người tạo & người xử lý)
-      Set<Integer> nameIds = new HashSet<>(targetUids);
-      for (Request r : items) if (r.getProcessedBy()!=null) nameIds.add(r.getProcessedBy());
-      Map<Integer,String> names = nameIds.isEmpty() ? Map.of() : userDAO.getFullNamesByIds(nameIds);
-
-      Map<Integer,String> creatorNames = new HashMap<>();
-      Map<Integer,String> processorNames = new HashMap<>();
-      for (Request r : items) {
-        creatorNames.put(r.getCreatedBy(), names.get(r.getCreatedBy()));
-        if (r.getProcessedBy()!=null) processorNames.put(r.getProcessedBy(), names.get(r.getProcessedBy()));
-      }
-
-      req.setAttribute("items", items);
-      req.setAttribute("creatorNames", creatorNames);
-      req.setAttribute("processorNames", processorNames);
-      req.getRequestDispatcher("/WEB-INF/views/request_subordinates.jsp").forward(req, resp);
-    } catch (Exception e) {
-      throw new ServletException(e);
-    }
+    req.getRequestDispatcher("/WEB-INF/views/request_subordinates.jsp").forward(req, resp);
+  } catch (Exception e) {
+    throw new ServletException(e);
   }
+}
 }

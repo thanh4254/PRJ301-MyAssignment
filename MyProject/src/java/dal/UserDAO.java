@@ -180,4 +180,25 @@ public class UserDAO {
     }
   }
 }
+    public List<Integer> getUserIdsByManager(int managerId) throws Exception {
+    String sql = """
+        WITH rec AS (
+          SELECT UserID FROM [User] WHERE ManagerUserID = ?
+          UNION ALL
+          SELECT u.UserID
+          FROM [User] u
+          JOIN rec r ON u.ManagerUserID = r.UserID
+        )
+        SELECT UserID FROM rec
+    """;
+    try (Connection c = DBContext.getConnection();
+         PreparedStatement ps = c.prepareStatement(sql)) {
+        ps.setInt(1, managerId);
+        try (ResultSet rs = ps.executeQuery()) {
+            List<Integer> ids = new ArrayList<>();
+            while (rs.next()) ids.add(rs.getInt(1));
+            return ids;
+        }
+    }
+}
 }

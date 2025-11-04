@@ -401,3 +401,4 @@ JOIN Role r ON r.RoleID=ur.RoleID
 WHERE u.Username IN ('quinn','tina','tony','ivy','jack','kate','liam','maya','nate',
                       'sara','sally','steve','owen','peter','rachel','tom','ursula','victor')
 ORDER BY u.Username;
+SELECT * FROM [UserRole]

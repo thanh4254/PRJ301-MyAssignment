@@ -8,15 +8,23 @@
 <%@ page import="java.util.*, model.Request" %>
 <%
   String ctx = request.getContextPath();
+
   @SuppressWarnings("unchecked")
   List<Request> items = (List<Request>) request.getAttribute("items");
   if (items == null) items = Collections.emptyList();
+
   @SuppressWarnings("unchecked")
-  Map<Integer,String> creatorNames   = (Map<Integer,String>) request.getAttribute("creatorNames");
+  Map<Integer,String> creatorNames = (Map<Integer,String>) request.getAttribute("creatorNames");
   if (creatorNames == null) creatorNames = Collections.emptyMap();
+
   @SuppressWarnings("unchecked")
   Map<Integer,String> processorNames = (Map<Integer,String>) request.getAttribute("processorNames");
   if (processorNames == null) processorNames = Collections.emptyMap();
+
+  // ----- PAGINATION (đổi tên khác 'page')
+  int curPage = (request.getAttribute("page")!=null) ? (Integer)request.getAttribute("page") : 1;
+  int totalPages = (request.getAttribute("totalPages")!=null) ? (Integer)request.getAttribute("totalPages") : 1;
+  String baseSub = ctx + "/requestsubordinatesservlet1";
 %>
 <!DOCTYPE html>
 <html lang="vi">
@@ -56,6 +64,7 @@
     .btn-reject{  background:#dc2626; color:#fff }
     .muted{opacity:.85}
     .action-card{display:flex; flex-direction:column; gap:8px}
+    .pager{display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-top:12px}
   </style>
 </head>
 <body>
@@ -83,26 +92,22 @@
         <tbody>
         <% if (items.isEmpty()) { %>
           <tr><td colspan="7" style="text-align:center;opacity:.85">Chưa có đơn nào</td></tr>
-        <% } else {
-             for (Request r : items) {
-               String creator   = creatorNames.getOrDefault(r.getCreatedBy(), String.valueOf(r.getCreatedBy()));
-               String processor = (r.getProcessedBy()==null) ? "" :
-                  processorNames.getOrDefault(r.getProcessedBy(), String.valueOf(r.getProcessedBy()));
+        <% } else { for (Request r : items) {
+             String creator   = creatorNames.getOrDefault(r.getCreatedBy(), String.valueOf(r.getCreatedBy()));
+             String processor = (r.getProcessedBy()==null) ? "" :
+               processorNames.getOrDefault(r.getProcessedBy(), String.valueOf(r.getProcessedBy()));
 
-               String raw  = String.valueOf(r.getStatus());
-               String norm = raw==null? "" : raw.trim().toUpperCase(java.util.Locale.ROOT);
-               String statusLabel, statusClass;
-               switch (norm) {
-                 case "NEW":      statusLabel="In-progress"; statusClass="status-cell status-new"; break;
-                 case "APPROVED": statusLabel="Approved";    statusClass="status-cell status-ok";  break;
-                 case "REJECTED": statusLabel="Rejected";    statusClass="status-cell status-bad"; break;
-                 default:         statusLabel=raw;           statusClass="status-cell";            break;
-               }
-        %>
+             String raw  = String.valueOf(r.getStatus());
+             String norm = raw==null? "" : raw.trim().toUpperCase(java.util.Locale.ROOT);
+             String statusLabel, statusClass;
+             switch (norm) {
+               case "NEW":      statusLabel="In-progress"; statusClass="status-cell status-new"; break;
+               case "APPROVED": statusLabel="Approved";    statusClass="status-cell status-ok";  break;
+               case "REJECTED": statusLabel="Rejected";    statusClass="status-cell status-bad"; break;
+               default:         statusLabel=raw;           statusClass="status-cell";            break;
+             } %>
           <tr id="row-<%=r.getId()%>">
-            <td>
-              <a href="<%= ctx %>/requestdetailservlet1?id=<%= r.getId() %>"><%= r.getTitle() %></a>
-            </td>
+            <td><a href="<%= ctx %>/requestdetailservlet1?id=<%= r.getId() %>"><%= r.getTitle() %></a></td>
             <td><%= r.getFrom() %></td>
             <td><%= r.getTo() %></td>
             <td><%= creator %></td>
@@ -137,6 +142,15 @@
       </table>
     </div>
 
+    <!-- Pager -->
+    <div class="pager">
+      <a class="btn-pill" style="<%= (curPage<=1) ? "pointer-events:none;opacity:.45" : "" %>"
+         href="<%= baseSub %>?page=<%= curPage-1 %>">← Trước</a>
+      <div><b>Trang <%= curPage %></b>/<%= totalPages %></div>
+      <a class="btn-pill" style="<%= (curPage>=totalPages) ? "pointer-events:none;opacity:.45" : "" %>"
+         href="<%= baseSub %>?page=<%= curPage+1 %>">Sau →</a>
+    </div>
+
     <p id="page-error" style="color:#b00020;font-weight:700;margin-top:10px">
       <%= request.getAttribute("error")!=null ? request.getAttribute("error") : "" %>
     </p>
@@ -164,12 +178,11 @@
     }).then(async res => {
       const data = await res.json().catch(()=>({ok:false, message:'Invalid response'}));
       if (!res.ok || !data.ok) throw new Error(data.message || 'Request failed');
-      return data; // {ok:true, id, status, processorName}
+      return data;
     });
   }
 
   function renderRowAfter(id, status, processorName){
-    // status cell
     const st = document.getElementById('status-' + id);
     const proc = document.getElementById('proc-' + id);
     const act = document.getElementById('act-' + id);
@@ -184,7 +197,6 @@
 
     proc.textContent = processorName || '';
 
-    // action cell: render đối nghịch
     if (status === 'APPROVED'){
       act.innerHTML =
         '<div class="muted">Đã <strong>Approved</strong><br>— bạn có thể đổi sang <strong>Rejected</strong>:</div>'
@@ -211,11 +223,9 @@
     }
   }
 
-  // Event delegation cho tất cả nút ở cột Thao tác
   document.addEventListener('click', function(e){
     const btn = e.target.closest('button[data-action]');
     if (!btn) return;
-
     e.preventDefault();
     const id = btn.getAttribute('data-id');
     const action = btn.getAttribute('data-action');
@@ -225,8 +235,8 @@
     btn.disabled = true;
     postAction(id, action, note)
       .then(data => renderRowAfter(data.id, data.status, data.processorName))
-      .catch(err => { alert(err.message || 'Có lỗi xảy ra'); })
-      .finally(() => { btn.disabled = false; });
+      .catch(err => alert(err.message || 'Có lỗi xảy ra'))
+      .finally(()=> btn.disabled = false);
   });
 })();
 </script>
