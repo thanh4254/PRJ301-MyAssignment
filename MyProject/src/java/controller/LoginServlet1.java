@@ -1,5 +1,6 @@
 package controller;
 
+import dal.PasswordUtil;
 import dal.UserDAO;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -8,8 +9,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import model.User;
 
 @WebServlet(name = "LoginServlet1", urlPatterns = {"/loginservlet1"})
@@ -17,83 +18,106 @@ public class LoginServlet1 extends HttpServlet {
 
   private final UserDAO userDAO = new UserDAO();
 
+  // Giới hạn & thời gian khoá
+  private static final int MAX_TRIES = 10;  // tối đa số lần nhập sai
+  private static final int LOCK_MIN  = 5;   // khoá tạm (phút) khi vượt ngưỡng
+
   @Override
   protected void doGet(HttpServletRequest req, HttpServletResponse resp)
       throws ServletException, IOException {
+
+    HttpSession ss = req.getSession(false);
+    if (ss != null && ss.getAttribute("user") != null) {
+      resp.sendRedirect(req.getContextPath() + "/requestlistmyservlet1");
+      return;
+    }
     req.getRequestDispatcher("/WEB-INF/views/login.jsp").forward(req, resp);
   }
 
   @Override
   protected void doPost(HttpServletRequest req, HttpServletResponse resp)
       throws ServletException, IOException {
+
+    String username = trimOrEmpty(req.getParameter("username"));
+    String password = trimOrEmpty(req.getParameter("password"));
+
+    if (username.isEmpty() || password.isEmpty()) {
+      req.setAttribute("error", "Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu.");
+      req.getRequestDispatcher("/WEB-INF/views/login.jsp").forward(req, resp);
+      return;
+    }
+
     try {
-      req.setCharacterEncoding("UTF-8");
-
-      String username = trim(req.getParameter("username"));
-      String password = trim(req.getParameter("password"));
-
-      if (username == null || password == null || username.isEmpty() || password.isEmpty()) {
-        req.setAttribute("error", "Vui lòng nhập đầy đủ tài khoản và mật khẩu.");
-        doGet(req, resp);
-        return;
-      }
-
-      // Tìm user (đã lọc IsActive=1)
       User u = userDAO.findByUsername(username);
+
+      // Không lộ thông tin tồn tại tài khoản
       if (u == null) {
-        req.setAttribute("error", "Sai tài khoản hoặc mật khẩu");
-        doGet(req, resp);
+        safeDelay();
+        req.setAttribute("error", "Sai tên đăng nhập hoặc mật khẩu.");
+        req.getRequestDispatcher("/WEB-INF/views/login.jsp").forward(req, resp);
         return;
       }
 
-      // So sánh mật khẩu: ưu tiên giữ nguyên hành vi cũ (plaintext),
-      // đồng thời chấp nhận DB lưu SHA-256.
-      String stored = u.getPasswordHash();
-      boolean ok = false;
-      if (stored != null) {
-        // 1) plaintext (cũ)
-        if (password.equals(stored)) ok = true;
-
-        // 2) SHA-256 hex (như 8D969EEF... cho "123456")
-        if (!ok && stored.equalsIgnoreCase(sha256Hex(password))) ok = true;
-
-        // 3) Nếu sau này bạn dùng BCrypt, bật dòng dưới và add lib BCrypt:
-        // if (!ok && stored.startsWith("$2a$") || stored.startsWith("$2b$") || stored.startsWith("$2y$"))
-        //   ok = org.mindrot.jbcrypt.BCrypt.checkpw(password, stored);
+      // 1) Đang bị khoá tạm -> chặn ngay
+      LocalDateTime now = LocalDateTime.now();       // dùng giờ local
+      LocalDateTime lockUntil = u.getLockUntil();    // có thể null
+      if (lockUntil != null && now.isBefore(lockUntil)) {
+        long minutes = Math.max(1, Duration.between(now, lockUntil).toMinutes());
+        req.setAttribute("error",
+            "Tài khoản đang bị khóa tạm thời. Vui lòng thử lại sau ~ " + minutes + " phút.");
+        req.getRequestDispatcher("/WEB-INF/views/login.jsp").forward(req, resp);
+        return;
       }
 
+      // 2) Kiểm tra mật khẩu
+      boolean ok = PasswordUtil.matches(password, u.getPasswordHash());
       if (!ok) {
-        req.setAttribute("error", "Sai tài khoản hoặc mật khẩu");
-        doGet(req, resp);
+        // +1 lần sai; nếu đạt ngưỡng thì set LockUntil = now + LOCK_MIN
+        userDAO.bumpLoginFail(u.getId(), MAX_TRIES, LOCK_MIN);
+
+        // Lấy lại trạng thái mới nhất để tính thông báo chính xác
+        User after = userDAO.findByUsername(username);
+
+        // Hard-lock dự phòng nếu vì lý do gì LockUntil vẫn null tại ngưỡng
+        if (after.getFailedLoginCount() >= MAX_TRIES && after.getLockUntil() == null) {
+          userDAO.forceLock(u.getId(), LOCK_MIN);
+          after = userDAO.findByUsername(username);
+        }
+
+        String msg;
+        if (after.getLockUntil() != null && LocalDateTime.now().isBefore(after.getLockUntil())) {
+          long minutes = Math.max(1,
+              Duration.between(LocalDateTime.now(), after.getLockUntil()).toMinutes());
+          msg = "Bạn đã hết số lần đăng nhập (≥ " + MAX_TRIES + "). "
+              + "Tài khoản tạm khóa khoảng " + minutes + " phút.";
+        } else {
+          int left = Math.max(0, MAX_TRIES - after.getFailedLoginCount());
+          msg = "Sai mật khẩu. Bạn còn " + left + " lần thử.";
+        }
+
+        req.setAttribute("error", msg);
+        req.getRequestDispatcher("/WEB-INF/views/login.jsp").forward(req, resp);
         return;
       }
 
-      // Đăng nhập thành công
-      HttpSession session = req.getSession(true);
-      session.setAttribute("user", u);
+      // 3) Đúng mật khẩu -> reset bộ đếm & login
+      userDAO.resetLoginFail(u.getId());
+      req.getSession(true).setAttribute("user", u);
       resp.sendRedirect(req.getContextPath() + "/requestlistmyservlet1");
 
-    } catch (Exception e) {
-      e.printStackTrace();
-      req.setAttribute("error", "Đăng nhập lỗi: " + e.getMessage());
-      doGet(req, resp);
+    } catch (Exception ex) {
+      req.setAttribute("error", "Có lỗi: " + ex.getMessage());
+      req.getRequestDispatcher("/WEB-INF/views/login.jsp").forward(req, resp);
     }
   }
 
-  private static String trim(String s) {
-    return (s == null) ? null : s.trim();
+  /* ================= Helpers ================= */
+
+  private static String trimOrEmpty(String s) {
+    return (s == null) ? "" : s.trim();
   }
 
-  // Tính SHA-256 và trả về hex lowercase
-  private static String sha256Hex(String s) {
-    try {
-      MessageDigest md = MessageDigest.getInstance("SHA-256");
-      byte[] hash = md.digest(s.getBytes(StandardCharsets.UTF_8));
-      StringBuilder sb = new StringBuilder(hash.length * 2);
-      for (byte b : hash) sb.append(String.format("%02x", b));
-      return sb.toString();
-    } catch (Exception e) {
-      return "";
-    }
+  private static void safeDelay() {
+    try { Thread.sleep(500L); } catch (InterruptedException ignored) {}
   }
 }

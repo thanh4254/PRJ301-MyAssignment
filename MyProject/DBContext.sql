@@ -402,3 +402,264 @@ WHERE u.Username IN ('quinn','tina','tony','ivy','jack','kate','liam','maya','na
                       'sara','sally','steve','owen','peter','rachel','tom','ursula','victor')
 ORDER BY u.Username;
 SELECT * FROM [UserRole]
+
+ALTER TABLE [User]
+ADD FailedLoginCount INT NOT NULL DEFAULT 0,
+    LastFailedAt     DATETIME2 NULL,
+    LockUntil        DATETIME2 NULL;
+GO
+CREATE TABLE LoginAudit(
+  Id INT IDENTITY PRIMARY KEY,
+  UserId INT NULL,
+  Username VARCHAR(50) NOT NULL,
+  Ip VARCHAR(45) NOT NULL,
+  Ok BIT NOT NULL,
+  Msg NVARCHAR(200) NULL,
+  At DATETIME2 NOT NULL DEFAULT SYSDATETIME()
+);
+-- nếu chưa có
+ALTER TABLE [User] 
+  ADD FailedLoginCount INT NOT NULL DEFAULT 0,
+      LockUntil       DATETIME2 NULL;
+
+	SELECT * FROM [User]
+
+	IF OBJECT_ID('dbo.PasswordResetRequest','U') IS NULL
+CREATE TABLE dbo.PasswordResetRequest (
+  Id            INT IDENTITY PRIMARY KEY,
+  UserId        INT       NOT NULL,
+  Username      VARCHAR(50) NOT NULL,
+  RequestedAt   DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+  Status        VARCHAR(16) NOT NULL DEFAULT 'PENDING', -- PENDING | APPROVED | DENIED | USED | EXPIRED
+  ApprovedBy    INT        NULL,
+  ApprovedAt    DATETIME2  NULL,
+  Token         UNIQUEIDENTIFIER NULL,                  -- phát khi admin approve
+  ExpiresAt     DATETIME2  NULL,                        -- hết hạn token
+  UsedAt        DATETIME2  NULL
+);
+CREATE INDEX IX_Reset_Status ON dbo.PasswordResetRequest(Status, RequestedAt DESC);
+CREATE INDEX IX_Reset_User   ON dbo.PasswordResetRequest(UserId, Status);
+
+/* (tuỳ chọn) Thêm 1 role/feature cho admin nếu bạn đang dùng RBAC */
+-- INSERT INTO Role(Code,Name) VALUES('ADMIN',N'Quản trị'); -- nếu chưa có
+-- INSERT INTO UserRole(UserID,RoleID) VALUES(<<adminUserId>>, (SELECT RoleID FROM Role WHERE Code='ADMIN'));
+
+-- FailedLoginCount + LockUntil chỉ tạo nếu CHƯA tồn tại
+IF COL_LENGTH('dbo.[User]', 'FailedLoginCount') IS NULL
+    ALTER TABLE dbo.[User] ADD FailedLoginCount INT NOT NULL DEFAULT(0);
+IF COL_LENGTH('dbo.[User]', 'LockUntil') IS NULL
+    ALTER TABLE dbo.[User] ADD LockUntil DATETIME2 NULL;
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Role WHERE Code = 'ADMIN')
+BEGIN
+    INSERT dbo.Role(Code, [Name]) VALUES ('ADMIN', N'Quản trị hệ thống');
+END
+
+
+DECLARE @pwd NVARCHAR(100) = N'Admin@123';           -- ← đổi nếu muốn
+DECLARE @pwdHash VARCHAR(64) =
+    CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', @pwd), 2);  -- Hex uppercase
+
+/* ===== 1) Role ADMIN ===== */
+IF NOT EXISTS (SELECT 1 FROM dbo.[Role] WHERE [Code] = 'ADMIN')
+BEGIN
+    INSERT dbo.[Role]([Code], [Name]) VALUES ('ADMIN', N'Administrator');
+END
+GO
+
+/* ===== 2) Bổ sung cột bảo mật nếu thiếu ===== */
+IF COL_LENGTH('dbo.[User]', 'FailedLoginCount') IS NULL
+    ALTER TABLE dbo.[User] ADD FailedLoginCount INT NOT NULL DEFAULT 0;
+IF COL_LENGTH('dbo.[User]', 'LockUntil') IS NULL
+    ALTER TABLE dbo.[User] ADD LockUntil DATETIME2 NULL;
+GO
+
+/* ===== 3) Tạo Department mặc định để tránh DepartmentID = NULL ===== */
+IF NOT EXISTS (SELECT 1 FROM dbo.Department WHERE [Name] = N'Administration')
+BEGIN
+    INSERT dbo.Department([Name], ManagerUserID) VALUES (N'Administration', NULL);
+END
+GO
+
+/* ===== 4) Tạo user admin nếu chưa có (hash SHA-256 hex UPPER) ===== */
+DECLARE @pwd       NVARCHAR(128) = N'Admin@123';
+DECLARE @pwdHash   VARCHAR(64)   = CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', @pwd), 2);
+DECLARE @depId     INT           = (SELECT TOP (1) DepartmentID
+                                   FROM dbo.Department
+                                   WHERE [Name] = N'Administration'
+                                   ORDER BY DepartmentID);
+
+IF NOT EXISTS (SELECT 1 FROM dbo.[User] WHERE Username = 'admin')
+BEGIN
+    INSERT dbo.[User](
+        Username, PasswordHash, FullName, Email,
+        DepartmentID, ManagerUserID, IsActive,
+        FailedLoginCount, LockUntil
+    )
+    VALUES(
+        'admin', @pwdHash, N'System Administrator', 'admin@example.com',
+        @depId, NULL, 1,
+        0, NULL
+    );
+END
+GO
+
+/* ===== 5) Gán role ADMIN cho admin nếu chưa có ===== */
+DECLARE @adminId INT = (SELECT TOP (1) UserID FROM dbo.[User] WHERE Username = 'admin' ORDER BY UserID);
+DECLARE @roleId  INT = (SELECT TOP (1) RoleID FROM dbo.[Role] WHERE [Code] = 'ADMIN' ORDER BY RoleID);
+
+IF @adminId IS NOT NULL AND @roleId IS NOT NULL
+AND NOT EXISTS (SELECT 1 FROM dbo.UserRole WHERE UserID = @adminId AND RoleID = @roleId)
+BEGIN
+    INSERT dbo.UserRole(UserID, RoleID) VALUES (@adminId, @roleId);
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.[Role] WHERE [Code] = 'ADMIN')
+BEGIN
+  INSERT dbo.[Role]([Code],[Name]) VALUES ('ADMIN', N'Quản trị hệ thống');
+END
+GO
+
+
+-- Chọn 1 Department bất kỳ (hoặc tự set tên phòng bạn muốn)
+DECLARE @depId INT = (SELECT TOP (1) DepartmentID FROM dbo.Department ORDER BY DepartmentID);
+
+-- Hash SHA-256 (hex uppercase) cho mật khẩu mới
+DECLARE @pwd     NVARCHAR(128) = N'Admin@123';
+DECLARE @pwdHash VARCHAR(64)   = CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', @pwd), 2);
+
+IF NOT EXISTS (SELECT 1 FROM dbo.[User] WHERE Username = 'admin')
+BEGIN
+  INSERT dbo.[User](
+    Username, PasswordHash, FullName, Email,
+    DepartmentID, ManagerUserID, IsActive,
+    FailedLoginCount, LockUntil
+  )
+  VALUES(
+    'admin', @pwdHash, N'System Administrator', 'admin@example.com',
+    @depId, NULL, 1,
+    0, NULL
+  );
+END
+ELSE
+BEGIN
+  UPDATE dbo.[User]
+  SET PasswordHash      = @pwdHash,
+      FailedLoginCount  = 0,         -- reset bộ đếm
+      LockUntil         = NULL       -- mở khóa nếu đang khóa
+  WHERE Username = 'admin';
+END
+GO
+
+
+DECLARE @adminId INT = (SELECT TOP 1 UserID FROM dbo.[User] WHERE Username = 'admin' ORDER BY UserID);
+DECLARE @roleId  INT = (SELECT TOP 1 RoleID FROM dbo.[Role] WHERE [Code] = 'ADMIN' ORDER BY RoleID);
+
+IF @adminId IS NOT NULL AND @roleId IS NOT NULL
+AND NOT EXISTS (SELECT 1 FROM dbo.UserRole WHERE UserID = @adminId AND RoleID = @roleId)
+BEGIN
+  INSERT dbo.UserRole(UserID, RoleID) VALUES (@adminId, @roleId);
+END
+GO
+
+SELECT Username, FailedLoginCount, LockUntil
+FROM dbo.[User]
+WHERE Username = 'admin';
+
+UPDATE dbo.[User]
+SET FullName = N'__CHECK_ADMIN__'
+WHERE Username = 'admin';
+
+SELECT UserID, Username, IsActive, FailedLoginCount, LockUntil
+FROM dbo.[User]
+WHERE Username = 'admin';
+
+UPDATE dbo.[User]
+SET FailedLoginCount = 0, LockUntil = NULL
+WHERE Username = 'admin';
+
+DECLARE @pwd NVARCHAR(128) = N'Admin@123';
+UPDATE dbo.[User]
+SET PasswordHash = CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', @pwd), 2)
+WHERE Username = 'admin';
+
+
+-- Đảm bảo Department 'Administration' tồn tại
+IF NOT EXISTS (SELECT 1 FROM dbo.Department WHERE [Name]=N'Administration')
+    INSERT dbo.Department([Name]) VALUES (N'Administration');
+
+DECLARE @depId INT = (SELECT TOP 1 DepartmentID FROM dbo.Department WHERE [Name]=N'Administration');
+
+-- Tạo admin nếu chưa có
+IF NOT EXISTS (SELECT 1 FROM dbo.[User] WHERE Username='admin')
+BEGIN
+    DECLARE @pwd NVARCHAR(128) = N'Admin@123';
+    INSERT dbo.[User](Username,PasswordHash,FullName,Email,DepartmentID,IsActive,FailedLoginCount,LockUntil)
+    VALUES(
+        'admin',
+        CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', @pwd), 2),
+        N'System Administrator',
+        'admin@example.com',
+        @depId, 1, 0, NULL
+    );
+END
+
+-- Bảo đảm có role ADMIN và gán cho admin
+IF NOT EXISTS (SELECT 1 FROM dbo.[Role] WHERE [Code]='ADMIN')
+    INSERT dbo.[Role]([Code],[Name]) VALUES ('ADMIN', N'Quản trị hệ thống');
+
+DECLARE @adminId INT = (SELECT TOP 1 UserID FROM dbo.[User] WHERE Username='admin');
+DECLARE @roleId  INT = (SELECT TOP 1 RoleID  FROM dbo.[Role] WHERE [Code]='ADMIN');
+
+IF NOT EXISTS (SELECT 1 FROM dbo.UserRole WHERE UserID=@adminId AND RoleID=@roleId)
+    INSERT dbo.UserRole(UserID, RoleID) VALUES (@adminId, @roleId);
+
+
+
+	/* TẠO/ĐẢM BẢO ADMIN – chạy nguyên khối này một lần */
+
+-- 1) Department 'Administration' (nếu chưa có)
+IF NOT EXISTS (SELECT 1 FROM dbo.Department WHERE [Name] = N'Administration')
+    INSERT dbo.Department([Name]) VALUES (N'Administration');
+
+DECLARE @depId INT =
+(
+    SELECT TOP (1) DepartmentID
+    FROM dbo.Department
+    WHERE [Name] = N'Administration'
+    ORDER BY DepartmentID
+);
+
+-- 2) Tạo user admin nếu chưa có (mật khẩu Admin@123, SHA-256 hex)
+IF NOT EXISTS (SELECT 1 FROM dbo.[User] WHERE Username = 'admin')
+BEGIN
+    DECLARE @pwd NVARCHAR(128) = N'Admin@123';
+    INSERT dbo.[User](
+        Username, PasswordHash, FullName, Email,
+        DepartmentID, ManagerUserID, IsActive,
+        FailedLoginCount, LockUntil
+    )
+    VALUES (
+        'admin',
+        CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', @pwd), 2),
+        N'System Administrator',
+        'admin@example.com',
+        @depId, NULL, 1,
+        0, NULL
+    );
+END
+
+-- 3) Bảo đảm có role ADMIN
+IF NOT EXISTS (SELECT 1 FROM dbo.[Role] WHERE [Code] = 'ADMIN')
+    INSERT dbo.[Role]([Code],[Name]) VALUES ('ADMIN', N'Quản trị hệ thống');
+
+-- 4) Gán role ADMIN cho admin (nếu chưa có)
+DECLARE @adminId INT = (SELECT TOP 1 UserID FROM dbo.[User] WHERE Username='admin');
+DECLARE @roleId  INT = (SELECT TOP 1 RoleID FROM dbo.[Role] WHERE [Code]='ADMIN');
+
+IF @adminId IS NOT NULL AND @roleId IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM dbo.UserRole WHERE UserID=@adminId AND RoleID=@roleId)
+    INSERT dbo.UserRole(UserID, RoleID) VALUES (@adminId, @roleId);
+
+	UPDATE dbo.[User] SET FailedLoginCount=0, LockUntil=NULL WHERE Username='admin';

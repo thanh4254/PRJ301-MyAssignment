@@ -117,7 +117,8 @@
     <label class="check">
       <input type="checkbox" name="remember" style="accent-color:#0f172a"> Remember me
     </label>
-    <a href="#">Forgot Password?</a>
+    <a href="${pageContext.request.contextPath}/forgot">Forgot Password?</a>
+
   </div>
 
   <button class="btn" type="submit">Login</button>
