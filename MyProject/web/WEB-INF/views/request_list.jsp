@@ -1,8 +1,3 @@
-<%-- 
-    Document   : request_list
-    Created on : Oct 12, 2025, 3:44:55 PM
-    Author     : Admin
---%>
 <%@ page contentType="text/html; charset=UTF-8" %>
 <%@ page import="java.util.*, model.Request, model.User, model.Role, model.Feature" %>
 <%
@@ -16,20 +11,22 @@
   Map<Integer,String> names = (Map<Integer,String>) request.getAttribute("names");
   if (names == null) names = Collections.emptyMap();
 
-  // quyền hiển thị Agenda
+  // user hiện tại & quyền
   User me = (User) session.getAttribute("user");
-  boolean showAgenda = false;
+  boolean isAdmin = false, showAgenda = false;
   if (me != null && me.getRoles()!=null) {
     for (Role r : me.getRoles()) {
-      if (r.getFeatures()==null) continue;
-      for (Feature f : r.getFeatures()) {
-        if ("AGD".equalsIgnoreCase(f.getCode())) { showAgenda = true; break; }
+      if (r == null) continue;
+      if ("ADMIN".equalsIgnoreCase(r.getCode())) isAdmin = true;
+      if (r.getFeatures()!=null) {
+        for (Feature f : r.getFeatures()) {
+          if ("AGD".equalsIgnoreCase(f.getCode())) { showAgenda = true; break; }
+        }
       }
-      if (showAgenda) break;
     }
   }
 
-  // ----- PAGINATION: tránh trùng tên với implicit object "page"
+  // ----- PAGINATION
   int curPage = (request.getAttribute("page")!=null) ? (Integer)request.getAttribute("page") : 1;
   int totalPages = (request.getAttribute("totalPages")!=null) ? (Integer)request.getAttribute("totalPages") : 1;
   String baseMy = ctx + "/requestlistmyservlet1";
@@ -75,13 +72,25 @@
     <div class="title">Đơn của tôi</div>
 
     <div class="topnav">
-      <a class="btn-pill" href="<%=ctx%>/requestcreateservlet1">+ Tạo đơn</a>
-      <a class="btn-pill" href="<%=ctx%>/requestsubordinatesservlet1">Đơn cấp dưới</a>
-      <% if (showAgenda) { %><a class="btn-pill" href="<%=ctx%>/agendaservlet1">Agenda phòng</a><% } %>
+      <% if (!isAdmin) { %>
+        <a class="btn-pill" href="<%=ctx%>/requestcreateservlet1">+ Tạo đơn</a>
+        <a class="btn-pill" href="<%=ctx%>/requestsubordinatesservlet1">Đơn cấp dưới</a>
+        <% if (showAgenda) { %>
+          <a class="btn-pill" href="<%=ctx%>/agendaservlet1">Agenda phòng</a>
+        <% } %>
+      <% } else { %>
+        <!-- ADMIN: chỉ hiển thị lối tắt sang trang duyệt reset -->
+        <a class="btn-pill" href="<%=ctx%>/admin/reset-requests">Duyệt yêu cầu đặt lại mật khẩu</a>
+      <% } %>
       <a class="btn-pill" href="<%=ctx%>/logoutservlet1">Đăng xuất</a>
     </div>
 
-    <table class="tbl">
+    <% if (isAdmin) { %>
+      <div class="muted">Trang này dành cho nhân viên xem “Đơn của tôi”.
+        Vui lòng dùng mục <b>Duyệt yêu cầu đặt lại mật khẩu</b> ở trên.</div>
+    <% } %>
+
+    <table class="tbl" style="<%= isAdmin ? "display:none" : "" %>">
       <thead>
       <tr>
         <th>Title</th><th>From</th><th>To</th><th>Status</th><th>Processed By</th><th>Note</th>
@@ -114,7 +123,7 @@
     </table>
 
     <!-- Pager -->
-    <div class="pager">
+    <div class="pager" style="<%= isAdmin ? "display:none" : "" %>">
       <a class="btn-pill" style="<%= (curPage<=1) ? "pointer-events:none;opacity:.45" : "" %>"
          href="<%= baseMy %>?page=<%= curPage-1 %>">← Trước</a>
       <div><b>Trang <%= curPage %></b>/<%= totalPages %></div>

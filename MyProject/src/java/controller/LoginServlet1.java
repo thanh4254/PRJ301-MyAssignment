@@ -11,6 +11,7 @@ import jakarta.servlet.http.HttpSession;
 import java.io.IOException;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import model.Role;
 import model.User;
 
 @WebServlet(name = "LoginServlet1", urlPatterns = {"/loginservlet1"})
@@ -27,9 +28,12 @@ public class LoginServlet1 extends HttpServlet {
       throws ServletException, IOException {
 
     HttpSession ss = req.getSession(false);
-    if (ss != null && ss.getAttribute("user") != null) {
-      resp.sendRedirect(req.getContextPath() + "/requestlistmyservlet1");
-      return;
+    if (ss != null) {
+      User u = (User) ss.getAttribute("user");
+      if (u != null) {
+        resp.sendRedirect(req.getContextPath() + targetAfterLogin(u));
+        return;
+      }
     }
     req.getRequestDispatcher("/WEB-INF/views/login.jsp").forward(req, resp);
   }
@@ -59,8 +63,8 @@ public class LoginServlet1 extends HttpServlet {
       }
 
       // 1) Đang bị khoá tạm -> chặn ngay
-      LocalDateTime now = LocalDateTime.now();       // dùng giờ local
-      LocalDateTime lockUntil = u.getLockUntil();    // có thể null
+      LocalDateTime now = LocalDateTime.now();
+      LocalDateTime lockUntil = u.getLockUntil(); // có thể null
       if (lockUntil != null && now.isBefore(lockUntil)) {
         long minutes = Math.max(1, Duration.between(now, lockUntil).toMinutes());
         req.setAttribute("error",
@@ -72,13 +76,9 @@ public class LoginServlet1 extends HttpServlet {
       // 2) Kiểm tra mật khẩu
       boolean ok = PasswordUtil.matches(password, u.getPasswordHash());
       if (!ok) {
-        // +1 lần sai; nếu đạt ngưỡng thì set LockUntil = now + LOCK_MIN
         userDAO.bumpLoginFail(u.getId(), MAX_TRIES, LOCK_MIN);
-
-        // Lấy lại trạng thái mới nhất để tính thông báo chính xác
         User after = userDAO.findByUsername(username);
 
-        // Hard-lock dự phòng nếu vì lý do gì LockUntil vẫn null tại ngưỡng
         if (after.getFailedLoginCount() >= MAX_TRIES && after.getLockUntil() == null) {
           userDAO.forceLock(u.getId(), LOCK_MIN);
           after = userDAO.findByUsername(username);
@@ -103,7 +103,7 @@ public class LoginServlet1 extends HttpServlet {
       // 3) Đúng mật khẩu -> reset bộ đếm & login
       userDAO.resetLoginFail(u.getId());
       req.getSession(true).setAttribute("user", u);
-      resp.sendRedirect(req.getContextPath() + "/requestlistmyservlet1");
+      resp.sendRedirect(req.getContextPath() + targetAfterLogin(u));
 
     } catch (Exception ex) {
       req.setAttribute("error", "Có lỗi: " + ex.getMessage());
@@ -112,6 +112,18 @@ public class LoginServlet1 extends HttpServlet {
   }
 
   /* ================= Helpers ================= */
+
+  private static String targetAfterLogin(User u) {
+    return isAdmin(u) ? "/admin/reset-requests" : "/requestlistmyservlet1";
+  }
+
+  private static boolean isAdmin(User u) {
+    if (u == null || u.getRoles() == null) return false;
+    for (Role r : u.getRoles()) {
+      if (r != null && "ADMIN".equalsIgnoreCase(r.getCode())) return true;
+    }
+    return false;
+  }
 
   private static String trimOrEmpty(String s) {
     return (s == null) ? "" : s.trim();

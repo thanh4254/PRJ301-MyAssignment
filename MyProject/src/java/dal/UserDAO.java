@@ -3,6 +3,12 @@ package dal;
 import model.Feature;
 import model.Role;
 import model.User;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.Timestamp;
+import java.util.ArrayList;
+import java.util.List;
 
 import java.sql.*;
 import java.time.LocalDateTime;
@@ -18,24 +24,28 @@ public class UserDAO {
     User u = new User();
     u.setId(rs.getInt("UserID"));
     u.setUsername(rs.getString("Username"));
-    u.setPasswordHash(rs.getString("PasswordHash"));
-    u.setFullName(rs.getString("FullName"));
-    u.setEmail(rs.getString("Email"));
-    u.setDepartmentId(rs.getInt("DepartmentID"));
-    int mgr = rs.getInt("ManagerUserID");
-    u.setManagerUserId(rs.wasNull() ? null : mgr);
-    u.setActive(rs.getBoolean("IsActive"));
+    if (hasColumn(rs, "PasswordHash"))   u.setPasswordHash(rs.getString("PasswordHash"));
 
-    // các cột kiểm soát đăng nhập (có thể null)
+    if (hasColumn(rs, "FullName"))       u.setFullName(rs.getString("FullName"));
+    if (hasColumn(rs, "Email"))          u.setEmail(rs.getString("Email"));
+    if (hasColumn(rs, "DepartmentID"))   u.setDepartmentId(rs.getInt("DepartmentID"));
+
+    if (hasColumn(rs, "ManagerUserID")) {
+        int mgr = rs.getInt("ManagerUserID");
+        u.setManagerUserId(rs.wasNull() ? null : mgr);
+    }
+    if (hasColumn(rs, "IsActive"))       u.setActive(rs.getBoolean("IsActive"));
+
     if (hasColumn(rs, "FailedLoginCount")) {
-      u.setFailedLoginCount(rs.getInt("FailedLoginCount"));
+        u.setFailedLoginCount(rs.getInt("FailedLoginCount"));
     }
     if (hasColumn(rs, "LockUntil")) {
-      Timestamp ts = rs.getTimestamp("LockUntil");
-      u.setLockUntil(ts == null ? null : ts.toLocalDateTime());
+        Timestamp ts = rs.getTimestamp("LockUntil");
+        u.setLockUntil(ts == null ? null : ts.toLocalDateTime());
     }
     return u;
-  }
+}
+
 
   /** Map đầy đủ + cột kiểm soát (dùng cho findByUsername) */
   private User mapUserAll(ResultSet rs) throws SQLException {
@@ -54,30 +64,28 @@ public class UserDAO {
   /* ============== Load Roles & Features ============== */
 
   /** Lấy danh sách Role của 1 user (không kèm features) */
-  public List<Role> loadRoles(int userId) throws Exception {
+  private List<Role> loadRoles(Connection cn, int userId) throws Exception {
     String sql = """
-        SELECT r.RoleID, r.Code, r.Name
-        FROM UserRole ur
-        JOIN Role r ON r.RoleID = ur.RoleID
-        WHERE ur.UserID = ?
-        ORDER BY r.RoleID
-        """;
-    List<Role> list = new ArrayList<>();
-    try (Connection c = DBContext.getConnection();
-         PreparedStatement ps = c.prepareStatement(sql)) {
-      ps.setInt(1, userId);
-      try (ResultSet rs = ps.executeQuery()) {
-        while (rs.next()) {
-          Role r = new Role();
-          r.setId(rs.getInt("RoleID"));
-          r.setCode(rs.getString("Code"));
-          r.setName(rs.getString("Name"));
-          list.add(r);
+      SELECT r.RoleID, r.Code, r.Name
+      FROM dbo.UserRole ur
+      JOIN dbo.[Role] r ON r.RoleID=ur.RoleID
+      WHERE ur.UserID=?
+    """;
+    List<Role> out = new ArrayList<>();
+    try (var ps = cn.prepareStatement(sql)) {
+        ps.setInt(1, userId);
+        try (var rs = ps.executeQuery()) {
+            while (rs.next()) {
+                Role r = new Role();
+                r.setId(rs.getInt("RoleID"));
+                r.setCode(rs.getString("Code"));
+                r.setName(rs.getString("Name"));
+                out.add(r);
+            }
         }
-      }
     }
-    return list;
-  }
+    return out;
+}
 
   /** Nạp feature cho 1 role (dùng chung connection) */
   private Set<Feature> loadFeaturesByRole(int roleId, Connection c) throws Exception {
@@ -108,23 +116,20 @@ public class UserDAO {
   /* ===================== Queries chính ===================== */
 
   /** Tìm theo username (dùng lúc login) – có cả FailedLoginCount/LockUntil */
-  public User findByUsername(String username) throws Exception {
-    String sql = """
-        SELECT UserID, Username, PasswordHash, FullName, Email,
-               DepartmentID, ManagerUserID, IsActive,
-               FailedLoginCount, LockUntil
-        FROM [User]
-        WHERE Username = ?
-        """;
-    try (Connection c = DBContext.getConnection();
-         PreparedStatement ps = c.prepareStatement(sql)) {
-      ps.setString(1, username);
-      try (ResultSet rs = ps.executeQuery()) {
-        if (!rs.next()) return null;
-        return mapUserAll(rs);
-      }
+ public User findByUsername(String username) throws Exception {
+    String sqlUser = "SELECT UserID, Username, PasswordHash, IsActive, FailedLoginCount, LockUntil FROM dbo.[User] WHERE Username=?";
+    try (var cn = DBContext.getConnection();
+         var ps = cn.prepareStatement(sqlUser)) {
+        ps.setString(1, username);
+        try (var rs = ps.executeQuery()) {
+            if (!rs.next()) return null;
+            User u = mapUser(rs);
+            // nạp roles
+            u.setRoles(loadRoles(cn, u.getId()));
+            return u;
+        }
     }
-  }
+}
 
   /** Lấy theo ID (detail/duyệt) – NẠP roles + features */
   public User findById(int id) throws Exception {
@@ -304,86 +309,85 @@ public void forceLock(int userId, int lockMinutes) throws Exception {
 
 /** User gửi yêu cầu reset (tạo 1 record PENDING) */
 public void createResetRequest(int userId, String username) throws Exception {
-  String sql = """
-      INSERT INTO PasswordResetRequest(UserId, Username, Status)
-      VALUES(?, ?, 'PENDING')
-      """;
-  try (var c = DBContext.getConnection();
-       var ps = c.prepareStatement(sql)) {
-    ps.setInt(1, userId);
-    ps.setString(2, username);
-    ps.executeUpdate();
-  }
+    String checkSql = """
+        SELECT 1 FROM dbo.PasswordResetRequest 
+        WHERE UserId=? AND Status='PENDING'
+    """;
+    String insertSql = """
+        INSERT dbo.PasswordResetRequest(UserId, Username) VALUES(?,?)
+    """;
+    try (var cn = DBContext.getConnection()) {
+        try (var ps = cn.prepareStatement(checkSql)) {
+            ps.setInt(1, userId);
+            try (var rs = ps.executeQuery()) {
+                if (rs.next()) return; // đã có pending -> không tạo mới
+            }
+        }
+        try (var ps = cn.prepareStatement(insertSql)) {
+            ps.setInt(1, userId);
+            ps.setString(2, username);
+            ps.executeUpdate();
+        }
+    }
 }
 
 /** Danh sách yêu cầu PENDING (cho admin) mới nhất */
-public java.util.List<Map<String,Object>> listPendingResetRequests() throws Exception {
-  String sql = """
-      SELECT r.Id, r.Username, r.UserId, r.RequestedAt
-      FROM PasswordResetRequest r
-      WHERE r.Status = 'PENDING'
-      ORDER BY r.RequestedAt DESC
-      """;
-  var list = new java.util.ArrayList<Map<String,Object>>();
-  try (var c = DBContext.getConnection();
-       var ps = c.prepareStatement(sql);
-       var rs = ps.executeQuery()) {
-    while (rs.next()) {
-      var m = new java.util.HashMap<String,Object>();
-      m.put("Id", rs.getInt("Id"));
-      m.put("UserId", rs.getInt("UserId"));
-      m.put("Username", rs.getString("Username"));
-      m.put("RequestedAt", rs.getTimestamp("RequestedAt"));
-      list.add(m);
+public List<Map<String,Object>> listPendingResetRequests() throws Exception {
+    String sql = """
+        SELECT r.Id, r.UserId, r.Username, r.RequestedAt
+        FROM dbo.PasswordResetRequest r
+        WHERE r.Status='PENDING'
+        ORDER BY r.RequestedAt DESC
+    """;
+    List<Map<String,Object>> out = new ArrayList<>();
+    try (var cn = DBContext.getConnection();
+         var ps = cn.prepareStatement(sql);
+         var rs = ps.executeQuery()) {
+        while (rs.next()) {
+            Map<String,Object> m = new HashMap<>();
+            m.put("id", rs.getInt("Id"));
+            m.put("userId", rs.getInt("UserId"));
+            m.put("username", rs.getString("Username"));
+            m.put("requestedAt", rs.getTimestamp("RequestedAt"));
+            out.add(m);
+        }
     }
-  }
-  return list;
+    return out;
 }
 
 /** Admin từ chối */
-public void denyReset(int requestId, int adminId) throws Exception {
-  String sql = """
-      UPDATE PasswordResetRequest
-      SET Status='DENIED', ApprovedBy=?, ApprovedAt=SYSUTCDATETIME()
-      WHERE Id=? AND Status='PENDING'
-      """;
-  try (var c = DBContext.getConnection();
-       var ps = c.prepareStatement(sql)) {
-    ps.setInt(1, adminId);
-    ps.setInt(2, requestId);
-    ps.executeUpdate();
-  }
+public void denyReset(int reqId, int adminId) throws Exception {
+    String sql = """
+        UPDATE dbo.PasswordResetRequest
+        SET Status='DENIED', ApprovedBy=?, ApprovedAt=SYSUTCDATETIME()
+        WHERE Id=? AND Status='PENDING'
+    """;
+    try (var cn = DBContext.getConnection(); var ps = cn.prepareStatement(sql)) {
+        ps.setInt(1, adminId);
+        ps.setInt(2, reqId);
+        ps.executeUpdate();
+    }
 }
 
 /** Admin duyệt: tạo token + hạn (ví dụ 30 phút) */
-public String approveReset(int requestId, int adminId, int expireMinutes) throws Exception {
-  String sql = """
-      UPDATE PasswordResetRequest
-      SET Status='APPROVED',
-          ApprovedBy=?,
-          ApprovedAt=SYSUTCDATETIME(),
-          Token = NEWID(),
-          ExpiresAt = DATEADD(MINUTE, ?, SYSUTCDATETIME())
-      WHERE Id=? AND Status='PENDING';
-      SELECT CAST(Token AS VARCHAR(36)) AS Token
-      FROM PasswordResetRequest WHERE Id=?;
-      """;
-  try (var c = DBContext.getConnection();
-       var ps = c.prepareStatement(sql)) {
-    ps.setInt(1, adminId);
-    ps.setInt(2, expireMinutes);
-    ps.setInt(3, requestId);
-    ps.setInt(4, requestId);
-    boolean hasResult = ps.execute();
-    String token = null;
-    while (hasResult) {
-      try (var rs = ps.getResultSet()) {
-        if (rs != null && rs.next()) token = rs.getString("Token");
-      }
-      hasResult = ps.getMoreResults();
+public String approveReset(int reqId, int adminId, int minutes) throws Exception {
+    String sql = """
+        UPDATE dbo.PasswordResetRequest
+        SET Status='APPROVED', ApprovedBy=?, ApprovedAt=SYSUTCDATETIME(),
+            Token=NEWID(), ExpiresAt=DATEADD(MINUTE, ?, SYSUTCDATETIME())
+        WHERE Id=? AND Status='PENDING';
+        SELECT CAST(Token AS VARCHAR(36)) AS Tok FROM dbo.PasswordResetRequest WHERE Id=?;
+    """;
+    try (var cn = DBContext.getConnection(); var ps = cn.prepareStatement(sql)) {
+        ps.setInt(1, adminId);
+        ps.setInt(2, minutes);
+        ps.setInt(3, reqId);
+        ps.setInt(4, reqId);
+        try (var rs = ps.executeQuery()) {
+            if (rs.next()) return rs.getString("Tok");
+        }
     }
-    return token;
-  }
+    throw new IllegalStateException("Không duyệt được (request không ở trạng thái PENDING)");
 }
 
 /** Tìm yêu cầu hợp lệ theo token (chưa dùng, chưa hết hạn, đã duyệt) */
@@ -457,5 +461,10 @@ public void resetPasswordWithToken(String token, String newHash) throws Exceptio
     }
   }
 }
+/** Giữ tương thích cũ: mapUser(...) = mapUserAll(...) */
+private User mapUser(ResultSet rs) throws SQLException {
+    return mapUserAll(rs);
+}
+
 
 }
