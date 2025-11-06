@@ -18,20 +18,45 @@ public class AdminResetRequestServlet extends HttpServlet {
     return u.getRoles().stream().anyMatch(r -> "ADMIN".equalsIgnoreCase(r.getCode()));
   }
 
-  @Override
-  protected void doGet(HttpServletRequest req, HttpServletResponse resp)
-      throws ServletException, IOException {
-    User me = (User) req.getSession().getAttribute("user");
-    if (!isAdmin(me)) { resp.sendError(403); return; }
+ @Override
+protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+        throws ServletException, IOException {
+
+    // --- đọc tham số ---
+    String q = req.getParameter("q");
+    if (q == null) q = "";
+    else q = q.trim();
+
+    int size = 5;                   // 5 dòng/trang
+    int page = 1;
+    try { page = Integer.parseInt(req.getParameter("page")); } catch (Exception ignore) {}
+    if (page < 1) page = 1;
 
     try {
-      List<Map<String,Object>> pending = userDAO.listPendingResetRequests();
-      req.setAttribute("items", pending);
-    } catch (Exception e) {
-      req.setAttribute("error", e.getMessage());
+        UserDAO dao = new UserDAO();
+
+        // !!! dùng đúng HÀM CÓ FILTER !!!
+        int total = dao.countPendingResetRequests(q);
+        int totalPages = Math.max(1, (int)Math.ceil(total / (double) size));
+        if (page > totalPages) page = totalPages;
+
+        var items = dao.listPendingResetRequests(page, size, q); // <-- dùng hàm có q
+
+        req.setAttribute("items", items);
+        req.setAttribute("page", page);
+        req.setAttribute("totalPages", totalPages);
+        req.setAttribute("q", q);             // giữ lại giá trị search
+        req.getRequestDispatcher("/WEB-INF/views/admin_reset_list.jsp").forward(req, resp);
+    } catch (Exception ex) {
+        req.setAttribute("error", "Lỗi tải danh sách: " + ex.getMessage());
+        req.setAttribute("items", java.util.Collections.emptyList());
+        req.setAttribute("page", 1);
+        req.setAttribute("totalPages", 1);
+        req.setAttribute("q", q);
+        req.getRequestDispatcher("/WEB-INF/views/admin_reset_list.jsp").forward(req, resp);
     }
-    req.getRequestDispatcher("/WEB-INF/views/admin_reset_list.jsp").forward(req, resp);
-  }
+}
+
 
   @Override
   protected void doPost(HttpServletRequest req, HttpServletResponse resp)
@@ -55,4 +80,6 @@ public class AdminResetRequestServlet extends HttpServlet {
     }
     doGet(req, resp);
   }
+
+
 }

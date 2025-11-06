@@ -1,8 +1,3 @@
-<%-- 
-    Document   : request_subordinates
-    Created on : Oct 12, 2025, 3:45:07 PM
-    Author     : Admin
---%>
 <%-- WEB-INF/views/request_subordinates.jsp --%>
 <%@ page contentType="text/html; charset=UTF-8" %>
 <%@ page import="java.util.*, model.Request" %>
@@ -21,12 +16,11 @@
   Map<Integer,String> processorNames = (Map<Integer,String>) request.getAttribute("processorNames");
   if (processorNames == null) processorNames = Collections.emptyMap();
 
-  // ----- SEARCH + PAGINATION -----
   String q = (String) request.getAttribute("q");
-  int curPage = (request.getAttribute("page")!=null) ? (Integer)request.getAttribute("page") : 1;
+  int curPage    = (request.getAttribute("page")!=null) ? (Integer)request.getAttribute("page") : 1;
   int totalPages = (request.getAttribute("totalPages")!=null) ? (Integer)request.getAttribute("totalPages") : 1;
-  String baseSub = ctx + "/requestsubordinatesservlet1";
 
+  String baseSub = ctx + "/requestsubordinatesservlet1";
   String qParam = "";
   try { qParam = (q!=null && !q.isBlank()) ? ("&q=" + java.net.URLEncoder.encode(q,"UTF-8")) : ""; }
   catch (Exception ignore) {}
@@ -64,10 +58,11 @@
       background:rgba(255,255,255,.55); color:#0f172a; min-width:260px;
     }
 
+    /* bảng + khung cuộn */
     .table-wrap{ flex:1 1 auto; overflow:auto; border-radius:12px; }
-    .tbl{width:100%; border-collapse:collapse; table-layout:fixed}
-    .tbl th,.tbl td{padding:12px; border:1px solid rgba(15,23,42,.18); word-wrap:break-word}
-    .tbl th{ background:#0f172a; color:#fff; text-align:left; font-weight:700; position:sticky; top:0; z-index:2; }
+    .tbl{width:100%; border-collapse:collapse; table-layout:fixed; min-width:1020px;}
+    .tbl th,.tbl td{padding:12px; border:1px solid rgba(15,23,42,.18); word-wrap:break-word; vertical-align:top}
+    .tbl th{ background:#0f172a; color:#fff; text-align:left; font-weight:700; position:sticky; top:0; z-index:2; white-space:nowrap }
     .tbl tr:nth-child(odd){background:rgba(255,255,255,.06)}
     .tbl tr:nth-child(even){background:rgba(255,255,255,.10)}
     .tbl a{color:#0b67ff; text-decoration:none; font-weight:700}
@@ -78,18 +73,46 @@
     .status-ok{  color:#16a34a !important; }
     .status-bad{ color:#dc2626 !important; }
 
-    .note-input{
-      width:100%; box-sizing:border-box; color:#0f172a; background:rgba(255,255,255,.55);
-      border:1px solid rgba(15,23,42,.18); border-radius:10px; padding:10px 12px; outline:none;
+    /* ---- Cột Thao tác: không cắt nút, tự co dãn ---- */
+    .td-actions{ box-sizing:border-box; width:260px; max-width:260px; min-width:240px; overflow:visible; }
+    .muted{opacity:.9; line-height:1.25; margin-bottom:4px}
+
+    /* card thao tác: ghi chú 1 hàng, cụm nút auto-fit (2 cột nếu đủ chỗ) */
+    .action-card{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .action-card .note-input{
+      grid-column:1 / -1; width:100%; box-sizing:border-box; color:#0f172a;
+      background:rgba(255,255,255,.55); border:1px solid rgba(15,23,42,.18);
+      border-radius:10px; padding:10px 12px; outline:none;
     }
-    .btn-approve,.btn-reject{ border:0; border-radius:10px; padding:10px 14px; font-weight:800; cursor:pointer;
-      box-shadow:0 6px 12px rgba(0,0,0,.18); }
+
+    .btn-row{ display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:8px; }
+    .btn-approve,.btn-reject{
+      border:0; border-radius:10px; padding:10px 14px; font-weight:800; cursor:pointer;
+      box-shadow:0 6px 12px rgba(0,0,0,.18); width:100%; white-space:nowrap;
+    }
     .btn-approve{ background:#16a34a; color:#fff }
     .btn-reject{  background:#dc2626; color:#fff }
-    .muted{opacity:.85}
-    .action-card{display:flex; flex-direction:column; gap:8px}
 
     .pager{display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-top:12px}
+
+    /* ==== Responsive: mượt như trang admin_reset_list ==== */
+    @media (max-width: 1200px){
+      .tbl{min-width:980px}
+      .td-actions{width:230px; max-width:230px}
+    }
+    @media (max-width: 860px){
+      .tbl th,.tbl td{padding:10px}
+      .btn-approve,.btn-reject{padding:9px 12px}
+      .muted{font-size:13px}
+    }
+    @media (max-width: 700px){
+      .action-card{grid-template-columns:1fr}  /* ghi chú + nút xếp dọc */
+      .btn-row{grid-template-columns:1fr}      /* 2 nút xếp dọc, không rớt */
+    }
+    @media (max-width: 560px){
+      .tbl th,.tbl td{padding:8px; font-size:14px}
+      .btn-approve,.btn-reject{padding:8px 10px}
+    }
   </style>
 </head>
 <body>
@@ -153,23 +176,27 @@
             <td><%= creator %></td>
             <td id="status-<%=r.getId()%>" class="<%= statusClass %>"><%= statusLabel %></td>
             <td id="proc-<%=r.getId()%>"><%= processor %></td>
-            <td id="act-<%=r.getId()%>">
+            <td id="act-<%=r.getId()%>" class="td-actions">
               <% if ("APPROVED".equals(norm)) { %>
-                <div class="muted">Đã <strong>Approved</strong><br>— bạn có thể đổi sang <strong>Rejected</strong>:</div>
+                <div class="muted">Đã <strong>Approved</strong> — có thể đổi sang <strong>Rejected</strong>:</div>
                 <div class="action-card">
                   <input class="note-input" id="note-<%=r.getId()%>" placeholder="Lý do từ chối">
-                  <button class="btn-reject" data-action="reject" data-id="<%=r.getId()%>">Reject</button>
+                  <div class="btn-row">
+                    <button class="btn-reject" data-action="reject" data-id="<%=r.getId()%>">Reject</button>
+                  </div>
                 </div>
               <% } else if ("REJECTED".equals(norm)) { %>
-                <div class="muted">Đã <strong>Rejected</strong><br>— bạn có thể đổi sang <strong>Approved</strong>:</div>
+                <div class="muted">Đã <strong>Rejected</strong> — có thể đổi sang <strong>Approved</strong>:</div>
                 <div class="action-card">
                   <input class="note-input" id="note-<%=r.getId()%>" placeholder="Ghi chú phê duyệt">
-                  <button class="btn-approve" data-action="approve" data-id="<%=r.getId()%>">Approve</button>
+                  <div class="btn-row">
+                    <button class="btn-approve" data-action="approve" data-id="<%=r.getId()%>">Approve</button>
+                  </div>
                 </div>
               <% } else { %>
                 <div class="action-card">
                   <input class="note-input" id="note-<%=r.getId()%>" placeholder="Ghi chú (tuỳ chọn)">
-                  <div style="display:flex; gap:8px">
+                  <div class="btn-row">
                     <button class="btn-approve" data-action="approve" data-id="<%=r.getId()%>">Approve</button>
                     <button class="btn-reject"  data-action="reject"  data-id="<%=r.getId()%>">Reject</button>
                   </div>
@@ -182,7 +209,7 @@
       </table>
     </div>
 
-    <!-- Pager giữ tham số q -->
+    <!-- Pager -->
     <div class="pager">
       <a class="btn-pill" style="<%= (curPage<=1) ? "pointer-events:none;opacity:.45" : "" %>"
          href="<%= baseSub %>?page=<%= curPage-1 %><%= qParam %>">← Trước</a>
@@ -239,27 +266,27 @@
 
     if (status === 'APPROVED'){
       act.innerHTML =
-        '<div class="muted">Đã <strong>Approved</strong><br>— bạn có thể đổi sang <strong>Rejected</strong>:</div>'
-        +'<div class="action-card">'
-        +  '<input class="note-input" id="note-'+id+'" placeholder="Lý do từ chối">'
-        +  '<button class="btn-reject" data-action="reject" data-id="'+id+'">Reject</button>'
-        +'</div>';
+        '<div class="muted">Đã <strong>Approved</strong> — có thể đổi sang <strong>Rejected</strong>:</div>'
+       +'<div class="action-card">'
+       +  '<input class="note-input" id="note-'+id+'" placeholder="Lý do từ chối">'
+       +  '<div class="btn-row"><button class="btn-reject" data-action="reject" data-id="'+id+'">Reject</button></div>'
+       +'</div>';
     } else if (status === 'REJECTED'){
       act.innerHTML =
-        '<div class="muted">Đã <strong>Rejected</strong><br>— bạn có thể đổi sang <strong>Approved</strong>:</div>'
-        +'<div class="action-card">'
-        +  '<input class="note-input" id="note-'+id+'" placeholder="Ghi chú phê duyệt">'
-        +  '<button class="btn-approve" data-action="approve" data-id="'+id+'">Approve</button>'
-        +'</div>';
+        '<div class="muted">Đã <strong>Rejected</strong> — có thể đổi sang <strong>Approved</strong>:</div>'
+       +'<div class="action-card">'
+       +  '<input class="note-input" id="note-'+id+'" placeholder="Ghi chú phê duyệt">'
+       +  '<div class="btn-row"><button class="btn-approve" data-action="approve" data-id="'+id+'">Approve</button></div>'
+       +'</div>';
     } else {
       act.innerHTML =
         '<div class="action-card">'
-        +  '<input class="note-input" id="note-'+id+'" placeholder="Ghi chú (tuỳ chọn)">'
-        +  '<div style="display:flex; gap:8px">'
-        +    '<button class="btn-approve" data-action="approve" data-id="'+id+'">Approve</button>'
-        +    '<button class="btn-reject" data-action="reject" data-id="'+id+'">Reject</button>'
-        +  '</div>'
-        +'</div>';
+       +  '<input class="note-input" id="note-'+id+'" placeholder="Ghi chú (tuỳ chọn)">'
+       +  '<div class="btn-row">'
+       +    '<button class="btn-approve" data-action="approve" data-id="'+id+'">Approve</button>'
+       +    '<button class="btn-reject"  data-action="reject"  data-id="'+id+'">Reject</button>'
+       +  '</div>'
+       +'</div>';
     }
   }
 

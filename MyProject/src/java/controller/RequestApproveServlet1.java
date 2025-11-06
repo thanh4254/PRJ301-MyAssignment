@@ -24,14 +24,18 @@ public class RequestApproveServlet1 extends HttpServlet {
   private final UserDAO     userDAO    = new UserDAO();
   private final EmployeeDAO empDAO     = new EmployeeDAO();
 
-  @Override protected void doPost(HttpServletRequest req, HttpServletResponse resp)
+  @Override
+  protected void doPost(HttpServletRequest req, HttpServletResponse resp)
       throws ServletException, IOException {
 
     req.setCharacterEncoding("UTF-8");
     User me = (User) req.getSession().getAttribute("user");
     if (me == null) { resp.sendRedirect(req.getContextPath()+"/loginservlet1"); return; }
 
-    final String spath    = req.getServletPath();                // /requestapproveservlet1 | /requestrejectservlet1
+    // đảm bảo user trong session đã có đầy đủ feature
+    PermissionUtil.ensureFeatures(me, userDAO);
+
+    final String spath    = req.getServletPath();
     final boolean approve = "/requestapproveservlet1".equalsIgnoreCase(spath);
     final RequestStatus target = approve ? RequestStatus.APPROVED : RequestStatus.REJECTED;
 
@@ -49,7 +53,6 @@ public class RequestApproveServlet1 extends HttpServlet {
       Request r = requestDAO.findById(id);
       if (r == null) throw new IllegalArgumentException("Không tìm thấy đơn.");
 
-      // QUAN TRỌNG: đúng chữ ký (4 tham số)
       if (!PermissionUtil.canProcess(me, r.getCreatedBy(), userDAO, empDAO))
         throw new SecurityException("Bạn không có quyền xử lý đơn này.");
 
@@ -65,11 +68,8 @@ public class RequestApproveServlet1 extends HttpServlet {
         resp.setContentType("application/json; charset=UTF-8");
         String pName = userDAO.getFullNamesByIds(java.util.Set.of(me.getId())).get(me.getId());
         if (pName == null) pName = me.getUsername();
-        String json = "{\"ok\":true"
-                      +",\"id\":"+id
-                      +",\"status\":\""+target.name()+"\""
-                      +",\"processorName\":\""+pName.replace("\"","\\\"")+"\"}";
-        resp.getWriter().write(json);
+        resp.getWriter().write("{\"ok\":true,\"id\":"+id+",\"status\":\""+target.name()
+            +"\",\"processorName\":\""+pName.replace("\"","\\\"")+"\"}");
         return;
       }
 

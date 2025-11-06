@@ -1,7 +1,3 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
- */
 package dal;
 
 import model.Feature;
@@ -10,8 +6,33 @@ import model.User;
 
 import java.util.Set;
 
+/** Tiện ích kiểm quyền/phân cấp duyệt đơn. */
 public class PermissionUtil {
 
+  /** Nạp đầy đủ roles + features vào đối tượng user đang nằm trong session nếu chưa có. */
+  public static void ensureFeatures(User me, UserDAO userDAO) {
+    if (me == null) return;
+    try {
+      boolean needReload = (me.getRoles() == null || me.getRoles().isEmpty());
+      if (!needReload) {
+        // roles có nhưng features trống -> cũng reload
+        for (Role r : me.getRoles()) {
+          Set<Feature> fs = r.getFeatures();
+          if (fs == null || fs.isEmpty()) { needReload = true; break; }
+        }
+      }
+      if (needReload) {
+        User full = userDAO.findById(me.getId());      // đã nạp đủ roles + features
+        if (full != null) {
+          me.setRoles(full.getRoles());
+          me.setDepartmentId(full.getDepartmentId());
+          me.setManagerUserId(full.getManagerUserId());
+        }
+      }
+    } catch (Exception ignore) { /* giữ an toàn, không làm app crash */ }
+  }
+
+  /** Có sở hữu feature code này không? */
   public static boolean hasFeatureCode(User u, String code) {
     if (u == null || u.getRoles() == null) return false;
     for (Role r : u.getRoles()) {
@@ -24,12 +45,14 @@ public class PermissionUtil {
     return false;
   }
 
-  /** Quy ước: role "Head" hoặc có feature REQ_HEAD là trưởng phòng */
+  /** Quy ước: là Head nếu có feature REQ_HEAD hoặc role tên "Head". */
   public static boolean isDepartmentHead(User u) {
-    if (u == null || u.getRoles() == null) return false;
+    if (u == null) return false;
     if (hasFeatureCode(u, "REQ_HEAD")) return true;
-    for (Role r : u.getRoles()) {
-      if ("Head".equalsIgnoreCase(r.getName())) return true;
+    if (u.getRoles() != null) {
+      for (Role r : u.getRoles()) {
+        if ("Head".equalsIgnoreCase(r.getName())) return true;
+      }
     }
     return false;
   }
@@ -40,13 +63,13 @@ public class PermissionUtil {
     if (me == null) return false;
     if (me.getId() == creatorId) return false; // không tự duyệt
 
-    // Head: cùng phòng là được
+    // Trưởng phòng: được duyệt người cùng phòng
     if (isDepartmentHead(me)) {
       User creator = userDAO.findById(creatorId);
       return creator != null && creator.getDepartmentId() == me.getDepartmentId();
     }
 
-    // Manager thường: nằm trong toàn bộ cây cấp dưới
+    // Quản lý thông thường: duyệt bất kỳ ai trong cây cấp dưới
     return empDAO.findAllReportUserIds(me.getId()).contains(creatorId);
   }
 }

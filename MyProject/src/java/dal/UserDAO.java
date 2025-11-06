@@ -330,26 +330,56 @@ public void createResetRequest(int userId, String username) throws Exception {
         }
     }
 }
+// Đếm tổng số request đang PENDING
+// Đếm tổng số request PENDING theo filter username (không phân biệt hoa thường)
+public int countPendingResetRequests(String q) throws Exception {
+    String sql = """
+        SELECT COUNT(*)
+        FROM dbo.PasswordResetRequest
+        WHERE Status='PENDING'
+          AND ( ? = '' OR LOWER(Username) LIKE LOWER(?) )
+    """;
+    try (var cn = DBContext.getConnection();
+         var ps = cn.prepareStatement(sql)) {
+        String like = (q == null ? "" : q.trim());
+        ps.setString(1, like);
+        ps.setString(2, like.isEmpty() ? "" : "%" + like + "%");
+        try (var rs = ps.executeQuery()) {
+            return rs.next() ? rs.getInt(1) : 0;
+        }
+    }
+}
+// Lấy danh sách PENDING có phân trang + filter username
+public List<Map<String,Object>> listPendingResetRequests(int page, int size, String q) throws Exception {
+    if (page < 1) page = 1;
+    if (size < 1) size = 5;
+    int offset = (page - 1) * size;
 
-/** Danh sách yêu cầu PENDING (cho admin) mới nhất */
-public List<Map<String,Object>> listPendingResetRequests() throws Exception {
     String sql = """
         SELECT r.Id, r.UserId, r.Username, r.RequestedAt
         FROM dbo.PasswordResetRequest r
         WHERE r.Status='PENDING'
+          AND ( ? = '' OR LOWER(r.Username) LIKE LOWER(?) )
         ORDER BY r.RequestedAt DESC
+        OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
     """;
     List<Map<String,Object>> out = new ArrayList<>();
     try (var cn = DBContext.getConnection();
-         var ps = cn.prepareStatement(sql);
-         var rs = ps.executeQuery()) {
-        while (rs.next()) {
-            Map<String,Object> m = new HashMap<>();
-            m.put("id", rs.getInt("Id"));
-            m.put("userId", rs.getInt("UserId"));
-            m.put("username", rs.getString("Username"));
-            m.put("requestedAt", rs.getTimestamp("RequestedAt"));
-            out.add(m);
+         var ps = cn.prepareStatement(sql)) {
+        String like = (q == null ? "" : q.trim());
+        ps.setString(1, like);
+        ps.setString(2, like.isEmpty() ? "" : "%" + like + "%");
+        ps.setInt(3, offset);
+        ps.setInt(4, size);
+        try (var rs = ps.executeQuery()) {
+            while (rs.next()) {
+                Map<String,Object> m = new HashMap<>();
+                m.put("id", rs.getInt("Id"));
+                m.put("userId", rs.getInt("UserId"));
+                m.put("username", rs.getString("Username"));
+                m.put("requestedAt", rs.getTimestamp("RequestedAt"));
+                out.add(m);
+            }
         }
     }
     return out;

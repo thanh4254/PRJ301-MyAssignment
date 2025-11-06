@@ -19,7 +19,8 @@ public class RequestDetailServlet1 extends HttpServlet {
   private final UserDAO userDAO = new UserDAO();
   private final EmployeeDAO empDAO = new EmployeeDAO();
 
-  @Override protected void doGet(HttpServletRequest req, HttpServletResponse resp)
+  @Override
+  protected void doGet(HttpServletRequest req, HttpServletResponse resp)
       throws ServletException, IOException {
     User me = (User) req.getSession().getAttribute("user");
     if (me == null) { resp.sendRedirect(req.getContextPath()+"/loginservlet1"); return; }
@@ -45,9 +46,10 @@ public class RequestDetailServlet1 extends HttpServlet {
         }
       }
 
-      boolean canApprove = PermissionUtil.hasFeatureCode(me, "REQ_APPROVE")
-          && r.getStatus()==RequestStatus.NEW
-          && me.getId()!=r.getCreatedBy()
+      // Nới điều kiện: KHÔNG yêu cầu feature REQ_APPROVE để tránh mất nút
+      boolean canApprove =
+          r.getStatus() == RequestStatus.NEW
+          && me.getId() != r.getCreatedBy()
           && PermissionUtil.canProcess(me, r.getCreatedBy(), userDAO, empDAO);
 
       req.setAttribute("item", r);
