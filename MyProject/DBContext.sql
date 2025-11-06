@@ -663,3 +663,102 @@ IF @adminId IS NOT NULL AND @roleId IS NOT NULL
     INSERT dbo.UserRole(UserID, RoleID) VALUES (@adminId, @roleId);
 
 	UPDATE dbo.[User] SET FailedLoginCount=0, LockUntil=NULL WHERE Username='admin';
+
+/* === ĐẢM BẢO ADMIN TỒN TẠI – KHÔNG DÙNG BIẾN === */
+
+-- 0) Bổ sung cột bảo mật nếu thiếu
+IF COL_LENGTH('dbo.[User]', 'FailedLoginCount') IS NULL
+    ALTER TABLE dbo.[User] ADD FailedLoginCount INT NOT NULL DEFAULT(0);
+IF COL_LENGTH('dbo.[User]', 'LockUntil') IS NULL
+    ALTER TABLE dbo.[User] ADD LockUntil DATETIME2 NULL;
+
+-- 1) Tạo phòng ban 'Administration' nếu chưa có
+IF NOT EXISTS (SELECT 1 FROM dbo.Department WHERE [Name] = N'Administration')
+    INSERT dbo.Department([Name]) VALUES (N'Administration');
+
+-- 2) Tạo user admin (mật khẩu Admin@123, SHA-256 hex) nếu chưa có
+IF NOT EXISTS (SELECT 1 FROM dbo.[User] WHERE Username = 'admin')
+BEGIN
+    DECLARE @pwd NVARCHAR(128) = N'Admin@123';
+    INSERT dbo.[User](
+        Username, PasswordHash, FullName, Email,
+        DepartmentID, ManagerUserID, IsActive,
+        FailedLoginCount, LockUntil
+    )
+    VALUES(
+        'admin',
+        CONVERT(VARCHAR(64), HASHBYTES('SHA2_256', @pwd), 2),
+        N'System Administrator',
+        'admin@example.com',
+        (SELECT TOP (1) DepartmentID FROM dbo.Department WHERE [Name]=N'Administration' ORDER BY DepartmentID),
+        NULL, 1,
+        0, NULL
+    );
+END
+
+-- 3) Tạo role ADMIN nếu chưa có
+IF NOT EXISTS (SELECT 1 FROM dbo.[Role] WHERE [Code] = 'ADMIN')
+    INSERT dbo.[Role]([Code],[Name]) VALUES ('ADMIN', N'Quản trị hệ thống');
+
+-- 4) Gán role ADMIN cho admin nếu chưa có
+IF NOT EXISTS (
+    SELECT 1
+    FROM dbo.UserRole ur
+    WHERE ur.UserID = (SELECT TOP (1) UserID FROM dbo.[User] WHERE Username='admin' ORDER BY UserID)
+      AND ur.RoleID = (SELECT TOP (1) RoleID FROM dbo.[Role] WHERE [Code]='ADMIN' ORDER BY RoleID)
+)
+INSERT dbo.UserRole(UserID, RoleID)
+VALUES (
+    (SELECT TOP (1) UserID FROM dbo.[User] WHERE Username='admin' ORDER BY UserID),
+    (SELECT TOP (1) RoleID FROM dbo.[Role] WHERE [Code]='ADMIN' ORDER BY RoleID)
+);
+UPDATE dbo.[User]
+SET FailedLoginCount = 0, LockUntil = NULL
+WHERE Username = 'admin';
+
+-- SHA-256(UTF-8) của "Admin@123":
+-- E86F78A8A3CAF0B60D8E74E5942AA6D86DC150CD3C03338AEF25B7D2D7E3ACC7
+UPDATE dbo.[User]
+SET PasswordHash = 'E86F78A8A3CAF0B60D8E74E5942AA6D86DC150CD3C03338AEF25B7D2D7E3ACC7',
+    FailedLoginCount = 0,
+    LockUntil = NULL
+WHERE Username = 'admin';
+
+DECLARE @adminId INT = (SELECT TOP 1 UserID FROM dbo.[User] WHERE Username='admin');
+DECLARE @roleId  INT = (SELECT TOP 1 RoleID  FROM dbo.[Role] WHERE [Code]='ADMIN');
+IF NOT EXISTS (SELECT 1 FROM dbo.UserRole WHERE UserID=@adminId AND RoleID=@roleId)
+    INSERT dbo.UserRole(UserID, RoleID) VALUES (@adminId, @roleId);
+
+
+
+	-- 1) Tài khoản có tồn tại & đang active?
+SELECT UserID, Username, IsActive FROM dbo.[User] WHERE Username = 'alice';  -- thay username anh đã nhập ở /forgot
+
+-- 2) Có bản ghi PENDING chưa?
+SELECT TOP 20 * 
+FROM dbo.PasswordResetRequest 
+ORDER BY Id DESC;
+
+-- 3) Nếu chưa có, INSERT thủ công để kiểm tra pipeline
+INSERT dbo.PasswordResetRequest(UserId, Username)  
+SELECT UserID, Username FROM dbo.[User] WHERE Username='alice';
+
+
+DECLARE @adminId INT = (SELECT TOP 1 UserID FROM dbo.[User] WHERE Username='admin');
+DECLARE @roleId  INT = (SELECT TOP 1 RoleID  FROM dbo.[Role] WHERE Code='ADMIN');
+IF NOT EXISTS (SELECT 1 FROM dbo.UserRole WHERE UserID=@adminId AND RoleID=@roleId)
+    INSERT dbo.UserRole(UserID, RoleID) VALUES (@adminId, @roleId);
+
+
+
+	SELECT u.UserID, u.Username, r.Code AS RoleCode
+FROM dbo.[User] u
+LEFT JOIN dbo.UserRole ur ON ur.UserID=u.UserID
+LEFT JOIN dbo.[Role] r ON r.RoleID=ur.RoleID
+WHERE u.Username='admin';
+
+-- nếu chưa có:
+DECLARE @adminId INT = (SELECT TOP 1 UserID FROM dbo.[User] WHERE Username='admin');
+DECLARE @roleId  INT = (SELECT TOP 1 RoleID  FROM dbo.[Role] WHERE Code='ADMIN');
+IF NOT EXISTS (SELECT 1 FROM dbo.UserRole WHERE UserID=@adminId AND RoleID=@roleId)
+    INSERT dbo.UserRole(UserID, RoleID) VALUES (@adminId, @roleId);
