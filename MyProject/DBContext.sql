@@ -714,7 +714,7 @@ VALUES (
 );
 UPDATE dbo.[User]
 SET FailedLoginCount = 0, LockUntil = NULL
-WHERE Username = 'admin';
+WHERE Username = 'bob';
 
 -- SHA-256(UTF-8) của "Admin@123":
 -- E86F78A8A3CAF0B60D8E74E5942AA6D86DC150CD3C03338AEF25B7D2D7E3ACC7

@@ -495,6 +495,25 @@ public void resetPasswordWithToken(String token, String newHash) throws Exceptio
 private User mapUser(ResultSet rs) throws SQLException {
     return mapUserAll(rs);
 }
+// Trả về token APPROVED mới nhất còn hạn cho username; null nếu chưa có
+// UserDAO.java
+public String findLatestApprovedTokenByUsername(String username) throws Exception {
+  String sql = """
+      SELECT TOP 1 CAST(Token AS VARCHAR(36)) AS Tok
+      FROM dbo.PasswordResetRequest
+      WHERE Username = ? AND Status = 'APPROVED'
+            AND UsedAt IS NULL AND ExpiresAt > SYSUTCDATETIME()
+      ORDER BY ApprovedAt DESC
+      """;
+  try (var cn = DBContext.getConnection();
+       var ps = cn.prepareStatement(sql)) {
+    ps.setString(1, username);
+    try (var rs = ps.executeQuery()) {
+      return rs.next() ? rs.getString("Tok") : null;
+    }
+  }
+}
+
 
 
 }
