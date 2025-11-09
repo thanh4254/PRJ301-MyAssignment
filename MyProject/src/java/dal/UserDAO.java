@@ -117,15 +117,25 @@ public class UserDAO {
 
   /** Tìm theo username (dùng lúc login) – có cả FailedLoginCount/LockUntil */
  public User findByUsername(String username) throws Exception {
-    String sqlUser = "SELECT UserID, Username, PasswordHash, IsActive, FailedLoginCount, LockUntil FROM dbo.[User] WHERE Username=?";
+    String sqlUser = """
+        SELECT UserID, Username, PasswordHash, IsActive, FailedLoginCount, LockUntil, DepartmentID, ManagerUserID, FullName, Email
+        FROM dbo.[User] WHERE Username=?
+    """;
     try (var cn = DBContext.getConnection();
          var ps = cn.prepareStatement(sqlUser)) {
         ps.setString(1, username);
         try (var rs = ps.executeQuery()) {
             if (!rs.next()) return null;
-            User u = mapUser(rs);
-            // nạp roles
-            u.setRoles(loadRoles(cn, u.getId()));
+
+            // map đủ cột cơ bản (có DepartmentID/ManagerUserID để check Head)
+            User u = mapUserBasic(rs);
+
+            // nạp roles + features CHO TỪNG ROLE
+            List<Role> roles = loadRoles(cn, u.getId());
+            for (Role r : roles) {
+                r.setFeatures(loadFeaturesByRole(r.getId(), cn));
+            }
+            u.setRoles(roles);
             return u;
         }
     }
@@ -170,18 +180,19 @@ public class UserDAO {
   }
 
   /** Danh sách UserID là cấp dưới trực tiếp của 1 manager */
-  public List<Integer> findSubordinateIds(int managerId) throws Exception {
-    String sql = "SELECT UserID FROM [User] WHERE ManagerUserID = ? AND IsActive = 1";
+ public List<Integer> findSubordinateIds(int managerId) throws Exception {
+    String sql = "SELECT UserID FROM [User] WHERE ManagerUserID = ? AND IsActive=1";
     List<Integer> ids = new ArrayList<>();
     try (Connection c = DBContext.getConnection();
          PreparedStatement ps = c.prepareStatement(sql)) {
-      ps.setInt(1, managerId);
-      try (ResultSet rs = ps.executeQuery()) {
-        while (rs.next()) ids.add(rs.getInt(1));
-      }
+        ps.setInt(1, managerId);
+        try (ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) ids.add(rs.getInt(1));
+        }
     }
     return ids;
-  }
+}
+
 
   /** Có phải trưởng phòng của department không? */
   public boolean isDepartmentHead(int userId, int departmentId) throws Exception {
@@ -250,8 +261,8 @@ public class UserDAO {
 
   /** Lấy tất cả UserID dưới quyền 1 manager (đang active) */
   public List<Integer> getUserIdsByManager(int managerUserId) throws Exception {
-    return findSubordinateIds(managerUserId);
-  }
+    return findAllSubordinateIdsTree(managerUserId);
+}
 
   /* ============ Kiểm soát đăng nhập (brute-force guard) ============ */
 
@@ -514,6 +525,39 @@ public String findLatestApprovedTokenByUsername(String username) throws Exceptio
   }
 }
 
+// Trả về tất cả UserID thuộc một phòng ban (đang active)
+public List<Integer> findUserIdsByDepartment(int depId) throws Exception {
+    String sql = "SELECT UserID FROM [User] WHERE DepartmentID=? AND IsActive=1";
+    List<Integer> ids = new ArrayList<>();
+    try (var c = DBContext.getConnection();
+         var ps = c.prepareStatement(sql)) {
+        ps.setInt(1, depId);
+        try (var rs = ps.executeQuery()) {
+            while (rs.next()) ids.add(rs.getInt(1));
+        }
+    }
+    return ids;
+}
+
+
+/** Lấy TOÀN BỘ cây cấp dưới (BFS) của 1 manager */
+public List<Integer> findAllSubordinateIdsTree(int managerId) throws Exception {
+    List<Integer> result = new ArrayList<>();
+    Deque<Integer> q = new ArrayDeque<>();
+    q.add(managerId);
+
+    while (!q.isEmpty()) {
+        int mgr = q.poll();
+        List<Integer> direct = findSubordinateIds(mgr);
+        for (Integer uid : direct) {
+            if (!result.contains(uid)) {
+                result.add(uid);
+                q.add(uid); // tiếp tục duyệt xuống
+            }
+        }
+    }
+    return result;
+}
 
 
 }

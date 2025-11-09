@@ -32,7 +32,7 @@ public class RequestApproveServlet1 extends HttpServlet {
     User me = (User) req.getSession().getAttribute("user");
     if (me == null) { resp.sendRedirect(req.getContextPath()+"/loginservlet1"); return; }
 
-    // đảm bảo user trong session đã có đầy đủ feature
+    // đảm bảo có đủ feature
     PermissionUtil.ensureFeatures(me, userDAO);
 
     final String spath    = req.getServletPath();

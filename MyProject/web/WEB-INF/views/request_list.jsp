@@ -1,35 +1,22 @@
 <%@ page contentType="text/html; charset=UTF-8" %>
-<%@ page import="java.util.*, model.Request, model.User, model.Role, model.Feature" %>
+<%@ page import="java.util.*, model.Request" %>
 <%
   String ctx = request.getContextPath();
 
   @SuppressWarnings("unchecked")
   List<Request> items = (List<Request>) request.getAttribute("items");
-  if (items == null) items = Collections.emptyList();
+  if (items == null) items = java.util.Collections.emptyList();
 
   @SuppressWarnings("unchecked")
   Map<Integer,String> names = (Map<Integer,String>) request.getAttribute("names");
-  if (names == null) names = Collections.emptyMap();
+  if (names == null) names = java.util.Collections.emptyMap();
 
-  // user hiện tại & quyền
-  User me = (User) session.getAttribute("user");
-  boolean isAdmin = false, showAgenda = false;
-  if (me != null && me.getRoles()!=null) {
-    for (Role r : me.getRoles()) {
-      if (r == null) continue;
-      if ("ADMIN".equalsIgnoreCase(r.getCode())) isAdmin = true;
-      if (r.getFeatures()!=null) {
-        for (Feature f : r.getFeatures()) {
-          if ("AGD".equalsIgnoreCase(f.getCode())) { showAgenda = true; break; }
-        }
-      }
-    }
-  }
+  int curPage    = (request.getAttribute("page")       != null) ? (Integer) request.getAttribute("page")       : 1;
+  int totalPages = (request.getAttribute("totalPages") != null) ? (Integer) request.getAttribute("totalPages") : 1;
 
-  // ----- PAGINATION
-  int curPage = (request.getAttribute("page")!=null) ? (Integer)request.getAttribute("page") : 1;
-  int totalPages = (request.getAttribute("totalPages")!=null) ? (Integer)request.getAttribute("totalPages") : 1;
-  String baseMy = ctx + "/requestlistmyservlet1";
+  // servlet đã set showAgenda = PermissionUtil.isDepartmentHead(me)
+  Boolean showAgendaAttr = (Boolean) request.getAttribute("showAgenda");
+  boolean showAgenda = (showAgendaAttr != null && showAgendaAttr);
 %>
 <!DOCTYPE html>
 <html lang="vi">
@@ -59,10 +46,8 @@
     .link-title:hover{text-decoration:underline}
     .muted{text-align:center;padding:12px;color:#0f172a;opacity:.9}
     .err{color:#b00020;font-weight:700;margin-top:10px}
-    .tbl td .status-pill{font-weight:800}
-    .tbl td .status-new{  color:#d97706 !important;}
-    .tbl td .status-ok{   color:#16a34a !important;}
-    .tbl td .status-bad{  color:#dc2626 !important;}
+    .status-pill{font-weight:800}
+    .status-new{color:#d97706}.status-ok{color:#16a34a}.status-bad{color:#dc2626}
     .pager{display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-top:12px}
   </style>
 </head>
@@ -72,44 +57,39 @@
     <div class="title">Đơn của tôi</div>
 
     <div class="topnav">
-      <% if (!isAdmin) { %>
-        <a class="btn-pill" href="<%=ctx%>/requestcreateservlet1">+ Tạo đơn</a>
-        <a class="btn-pill" href="<%=ctx%>/requestsubordinatesservlet1">Đơn cấp dưới</a>
-        <% if (showAgenda) { %>
-          <a class="btn-pill" href="<%=ctx%>/agendaservlet1">Agenda phòng</a>
-        <% } %>
-      <% } else { %>
-        <!-- ADMIN: chỉ hiển thị lối tắt sang trang duyệt reset -->
-        <a class="btn-pill" href="<%=ctx%>/admin/reset-requests">Duyệt yêu cầu đặt lại mật khẩu</a>
+      <a class="btn-pill" href="<%=ctx%>/requestcreateservlet1">+ Tạo đơn</a>
+      <a class="btn-pill" href="<%=ctx%>/requestsubordinatesservlet1">Đơn cấp dưới</a>
+      <% if (showAgenda) { %>
+        <a class="btn-pill" href="<%=ctx%>/agendaservlet1">Agenda phòng</a>
       <% } %>
       <a class="btn-pill" href="<%=ctx%>/logoutservlet1">Đăng xuất</a>
     </div>
 
-    <% if (isAdmin) { %>
-      <div class="muted">Trang này dành cho nhân viên xem “Đơn của tôi”.
-        Vui lòng dùng mục <b>Duyệt yêu cầu đặt lại mật khẩu</b> ở trên.</div>
-    <% } %>
-
-    <table class="tbl" style="<%= isAdmin ? "display:none" : "" %>">
+    <table class="tbl">
       <thead>
-      <tr>
-        <th>Title</th><th>From</th><th>To</th><th>Status</th><th>Processed By</th><th>Note</th>
-      </tr>
+        <tr>
+          <th>Title</th>
+          <th>From</th>
+          <th>To</th>
+          <th>Status</th>
+          <th>Processed By</th>
+          <th>Note</th>
+        </tr>
       </thead>
       <tbody>
       <% if (items.isEmpty()) { %>
         <tr><td colspan="6" class="muted">Chưa có đơn nào</td></tr>
-      <% } else { for (Request r : items) {
-           String processedName = (r.getProcessedBy()==null) ? "" :
-             names.getOrDefault(r.getProcessedBy(), String.valueOf(r.getProcessedBy()));
-           String raw = String.valueOf(r.getStatus());
-           String statusLabel, statusClass;
-           switch (raw) {
-             case "NEW":      statusLabel="In-progress"; statusClass="status-pill status-new"; break;
-             case "APPROVED": statusLabel="Approved";    statusClass="status-pill status-ok";  break;
-             case "REJECTED": statusLabel="Rejected";    statusClass="status-pill status-bad"; break;
-             default:         statusLabel=raw;           statusClass="status-pill";
-           } %>
+      <% } else {
+           for (Request r : items) {
+             String processedName = (r.getProcessedBy()==null) ? "" :
+               names.getOrDefault(r.getProcessedBy(), String.valueOf(r.getProcessedBy()));
+             String raw = String.valueOf(r.getStatus());
+             String statusLabel, statusClass="status-pill";
+             if ("NEW".equals(raw)) { statusLabel="In-progress"; statusClass+=" status-new"; }
+             else if ("APPROVED".equals(raw)) { statusLabel="Approved"; statusClass+=" status-ok"; }
+             else if ("REJECTED".equals(raw)) { statusLabel="Rejected"; statusClass+=" status-bad"; }
+             else { statusLabel = raw; }
+      %>
         <tr>
           <td><a class="link-title" href="<%=ctx%>/requestdetailservlet1?id=<%=r.getId()%>"><%= r.getTitle() %></a></td>
           <td><%= r.getFrom() %></td>
@@ -122,13 +102,13 @@
       </tbody>
     </table>
 
-    <!-- Pager -->
-    <div class="pager" style="<%= isAdmin ? "display:none" : "" %>">
+    <!-- Phân trang -->
+    <div class="pager">
       <a class="btn-pill" style="<%= (curPage<=1) ? "pointer-events:none;opacity:.45" : "" %>"
-         href="<%= baseMy %>?page=<%= curPage-1 %>">← Trước</a>
+         href="<%= ctx %>/requestlistmyservlet1?page=<%= curPage-1 %>">← Trước</a>
       <div><b>Trang <%= curPage %></b>/<%= totalPages %></div>
       <a class="btn-pill" style="<%= (curPage>=totalPages) ? "pointer-events:none;opacity:.45" : "" %>"
-         href="<%= baseMy %>?page=<%= curPage+1 %>">Sau →</a>
+         href="<%= ctx %>/requestlistmyservlet1?page=<%= curPage+1 %>">Sau →</a>
     </div>
 
     <p class="err"><%= request.getAttribute("error")!=null ? request.getAttribute("error") : "" %></p>
