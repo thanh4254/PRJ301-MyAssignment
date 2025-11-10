@@ -762,3 +762,46 @@ DECLARE @adminId INT = (SELECT TOP 1 UserID FROM dbo.[User] WHERE Username='admi
 DECLARE @roleId  INT = (SELECT TOP 1 RoleID  FROM dbo.[Role] WHERE Code='ADMIN');
 IF NOT EXISTS (SELECT 1 FROM dbo.UserRole WHERE UserID=@adminId AND RoleID=@roleId)
     INSERT dbo.UserRole(UserID, RoleID) VALUES (@adminId, @roleId);
+
+	SELECT * FROM [UserRole]
+
+	-- Bảo đảm có feature AGD
+IF NOT EXISTS (SELECT 1 FROM Feature WHERE Code='AGD')
+  INSERT Feature(Code, Name, PathPattern) VALUES ('AGD','Agenda phòng','/agendaservlet1');
+
+-- Gán feature AGD cho role HEAD (đổi Code role cho đúng hệ thống của bạn)
+INSERT INTO RoleFeature(RoleID, FeatureID)
+SELECT r.RoleID, f.FeatureID
+FROM [Role] r CROSS JOIN Feature f
+WHERE r.Code='HEAD' AND f.Code='AGD'
+  AND NOT EXISTS (
+    SELECT 1 FROM RoleFeature rf WHERE rf.RoleID=r.RoleID AND rf.FeatureID=f.FeatureID
+  );
+
+-- Đặt Cara làm trưởng phòng IT (tuỳ DepartmentID thực tế)
+UPDATE Department
+SET ManagerUserID = (SELECT UserID FROM [User] WHERE Username='cara')
+WHERE DepartmentID = (SELECT DepartmentID FROM [User] WHERE Username='cara');
+
+
+
+-- Cara đúng là trưởng phòng IT chưa?
+SELECT d.DepartmentID, d.Name, d.ManagerUserID, u.UserID, u.Username
+FROM Department d
+LEFT JOIN [User] u ON u.UserID = d.ManagerUserID
+WHERE d.Name = N'IT';
+
+-- Cara có role DIV_LEADER &/or feature AGD chưa?
+SELECT r.Code AS RoleCode, f.Code AS FeatureCode
+FROM [User] u
+LEFT JOIN UserRole ur ON ur.UserID=u.UserID
+LEFT JOIN [Role] r    ON r.RoleID=ur.RoleID
+LEFT JOIN RoleFeature rf ON rf.RoleID=r.RoleID
+LEFT JOIN Feature f      ON f.FeatureID=rf.FeatureID
+WHERE u.Username='cara';
+
+-- Cây cấp dưới của Cara (để đối chiếu)
+SELECT u.UserID, u.Username, u.ManagerUserID
+FROM [User] u
+WHERE u.IsActive=1
+ORDER BY u.ManagerUserID, u.UserID;
